@@ -1,0 +1,839 @@
+slides:
+  - slide:
+      title: "Introduction to Multi-Agent Systems"
+  - slide:
+      title: "Talking Headshot"
+      script: |
+        Hi everyone, welcome to the course on Multi-Agent Systems. 2025 is the year of the agent, 
+        and there is no better time than now to start so that you can transform your workflows with AI. 
+        Many of us have a good understanding of how to solve problems in uncertain situations in our jobs, 
+        and multi-agent systems allow us to structure these abstract processes
+         so we can mainly focus on tweaking and editing natural language prompts instead of worrying about 
+         figuring out exact formulas or algorithms or dealing with messy data or confusing and complicated connections to disparate systems.
+
+        By the end of the course, you'll be able to design and develop complex multi agent systems that can carry
+         out multi-step procedures to ensure requests are satisfied. In so doing, you'll be able to determine 
+         agentic solutions for your own workflows that allow you to focus on more creative tasks like
+         building systems and out-of-the-box ideas!  
+  - slide:
+      title: "What is [X]? (Optional)"
+      script: |
+        What is a multi agent system?  A multi-agent system is a computational program which can receive 
+        complicated natural language requests from users and respond agentically, that is, that there is
+         not a strictly defined pre-determined sequence of checks that an agent will go through in responding 
+         to a user question. In a multi-agent system, by defining agents with distinct goals and personalities,
+          we can begin to approximate the kind of interactivity that occurs between humans working on a problem.
+
+        [DIAGRAM: A flowchart showing a multi-agent system. A user connects to a coordinator agent with a 
+        bidirectional "request/response" arrow. The coordinator has a decision loop that branches to either 
+        use tools directly or delegate to specialized agents. These specialized agents (shown as 3-4 separate boxes)
+         have access to various tools (database, search, code execution). Arrows show communication flow between components.]
+  - slide:
+      title: "Motivating story/scenario"
+      script: |
+        Let's start with a simple example everyone can relate to. Think about how a restaurant operates. You have:
+        - Hosts who greet customers and manage seating
+        - Waiters who take orders and deliver food
+        - Chefs who specialize in different types of cooking
+        - Managers who oversee the whole operation
+        - Busboys who clean up when customers leave
+
+        Each person has a clear role, and they communicate with each other to deliver a complete experience.
+        Multi-agent AI systems work in a similar way and we can extend this thought process to essentially any
+        kind of business system that operates based on well defined roles and responsibilities.
+
+        [repeat the diagram from the first slide but instead of abstract agents and tools, fill it out so its like these]
+  - slide:
+      title: "Conceptual Framework (Optional)"
+      script: |
+        To make mutli-agent systems truly powerful and groundbreaking, we need to make sure that that 
+        the agents themselves can integrate with uot business systems. This requires us to enable them
+        with complex tools and so in this course we will learn about how to route data and memories
+        between agents and how to use agents to more carefully augment requests to AI models with relevant context.
+
+        [show a diagram of agent system where there are links between the system and a db stack, a web search indicator,
+        and then a code execution thing that will have like a python (>>>) symbol/ a bash ($) symbol]
+
+        When agents can use tools to experiment and to verify claims, we can see clearly that hallucinations
+        will be reduced and overall user satisfaction will improve.
+  - slide:
+      title: "Module 1: Multi-Agent Architecture Design"
+      script: |
+        Now that we've got an introduction under our belts for agents, let's talk about how to actually design a multi-agent 
+        system. Think of this as drawing up the blueprint for a team: who does what, how do they talk to each other, 
+        and what are the rules of engagement? We'll look at common patterns like having a central orchestrator who delegates 
+        tasks to worker agents, or using specialized agents for different types of information retrieval. 
+        The key is to define clear roles and responsibilities, and to map out how data will flow between agents. 
+        We'll also introduce some diagramming tools you can use to visualize your system before you start building.
+
+        [DIAGRAM: An architecture blueprint showing common multi-agent patterns. The left side shows an "Orchestrator-Worker" 
+        pattern with a central manager connected to multiple specialized workers. The right side shows a "Peer-to-Peer" pattern where
+        specialized agents connect directly to each other in a mesh. In the former, all communication flows through a central agent, whereas in the latter, communication 
+        begins directly with individual agents who can decide to pass things along to others in the network.
+        Arrows indicate message passing between components. 
+        Labels highlight key design considerations like "Role Definition", "Communication Protocol", and "State Management".]
+
+  - slide:
+      title: "Multi-Agent Architecture Design: Component Patterns"
+      script: |
+        In this section, we're focusing on the fundamental components that make a multi-agent system work effectively. 
+        You'll learn to identify the essential building blocks and understand how to design architectures where 
+        agents collaborate efficiently. Think of it like organizing a team where each member has specific responsibilities.
+
+        There are a few different approaches to structuring these systems. As mentioned before, you might use an orchestrator 
+        pattern, where a central coordinator directs specialized workers, similar to how a project manager delegates tasks. 
+        Or you could implement direct routing, where requests immediately go to the most qualified agent for handling. 
+        We'll explore how information flows through these different structures and why specialization leads to more robust outcomes.
+
+        Let's look at an e-commerce return system as an example. When a customer submits a return request,
+        the orchestrator receives it and activates the right specialists - a policy agent checks eligibility requirements, an inventory agent prepares stock updates, a refund agent processes the payment return, and a communication agent keeps the customer informed throughout. This approach ensures each specialized function is handled by an agent specifically designed for that task, creating a seamless experience despite the complex coordination happening behind the scenes.
+- slide:
+      title: "Multi-Agent Architecture Design: Implementation Frameworks"
+      script: |
+        As you go through the implementation frameworks, think about how you might adapt these patterns to your own projects.
+        
+        For our demo example, we'll build a healthcare diagnostic system where medical information flows between specialists. 
+        Picture a primary diagnostic agent that first assesses patient symptoms, then routes complex cases to specialized 
+        agents representing different medical domains - cardiology, neurology, and internal medicine. 
+        Each specialist agent applies domain-specific reasoning and returns findings to a synthesis agent that compiles a 
+        comprehensive diagnostic report. This framework illustrates how appropriate architecture selection dramatically 
+        improves the system's ability to handle complex, specialized knowledge domains.
+
+
+  - slide:
+      title: "Exercise: Multi-Agent Architecture Design"
+      script: |
+        Now it's your turn! Choose a real-world scenario—maybe a sales pipeline, a marketing funnel, 
+        or a multi-step helpdesk process. Draw a multi-agent architecture diagram for your scenario. 
+        Clearly present the roles of each agent and show how data flows between them. 
+        Think about which agents would be responsible for specific tasks and how they would communicate with each other.
+
+  - slide:
+      title: "Exercise Solution: Multi-Agent Architecture Design"
+      script: |
+        Here's our helpdesk architecture solution:
+
+        [DIAGRAM: A flowchart showing the helpdesk multi-agent system with four connected components.
+         The Orchestrator Agent is at the center with arrows connecting to three specialized agents: 
+         Classification Agent (top), Knowledge Agent (right), and Response Agent (bottom). 
+         Arrows show the data flow between components, with user input entering the Orchestrator and the final 
+         response coming from the Response Agent.]
+
+        The diagram illustrates our straightforward multi-agent system with four specialized components:
+        
+        The Orchestrator Agent receives user queries and coordinates the workflow between the other agents.
+        When a query arrives, it's sent to the Classification Agent, which analyzes the issue type. 
+        Based on this classification, the Knowledge Agent retrieves relevant documentation.
+        Finally, the Response Agent creates a helpful answer by combining the classification and knowledge.
+        
+        This modular design keeps each agent focused on one responsibility, making the system easy to understand and extend.
+        The visual representation helps us see how data flows through the system and how each component interacts with others.
+
+  - slide:
+      title: "Module 2: Multi-Agent Architecture Implementation"
+      script: |
+        Once you've designed your architecture, it's time to bring it to life in code. In this section, we'll 
+        show you how to instantiate multiple agents in your codebase and connect them with well-defined interfaces. 
+        You'll learn how to define each agent's system prompt or specialized toolset, so that each one knows exactly 
+        what it's responsible for. By the end, you'll have a working multi-agent system that can handle complex tasks
+        by dividing the work among specialized agents.
+
+        [DIAGRAM: A code structure visualization showing agent implementation. The left side shows "Agent Definition" 
+        with a base agent class and specialized subclasses. The middle shows "Communication" with message objects and 
+        interface definitions. The right shows "Tools Integration" with specialized tools assigned to different agents. 
+        Colored connections show relationships between components.]
+
+  - slide:
+      title: "Multi-Agent Architecture Implementation: Agent Definition Patterns"
+      script: |
+        Moving from architecture design to implementation requires translating our conceptual models into working code. 
+        You'll develop a multi-agent system by coding the architecture we designed in the previous section, creating clear 
+        interfaces for communication and collaboration. The implementation process involves instantiating multiple agents 
+        in a single codebase, each with their own specialized role and toolset.
+
+        We'll explore how to implement agent classes that reflect the architectural patterns we discussed earlier. 
+        This includes crafting system prompts that define each agent's specialized knowledge, assigning appropriate
+        tools to each agent, and establishing protocols for passing messages between them. The state management 
+        concepts we touched on in our architectural designs will become concrete implementation details that make 
+        our agents persistent and reliable.
+        
+        For our demo, we'll implement a content creation workflow system that builds on the architectural patterns 
+        we've explored. We'll create specialized agents for content research, writing, editing, and publishing -a practical 
+        application of the role specialization concept. The research agent specializes in finding and analyzing information,
+        using web search and data analysis tools. The writing agent transforms that research into engaging content, 
+        while the editing agent applies style and grammar rules. Finally, the publishing agent handles formatting and distribution. 
+        This demonstrates how the modular architecture we designed translates into a functioning system where each agent excels 
+        at its specific responsibility while working toward a shared goal.
+
+  - slide:
+      title: "Multi-Agent Architecture Implementation: Communication Protocols"
+      script: |
+        We'll focus on implementing clean interfaces between agents and covering different methods for agents to 
+        exchange information. You'll learn how to structure agent classes, integrate tools, handle messages, and manage state.
+        
+        For our demo, let's build a financial advisory system where different agents must exchange structured data. 
+        Our system consists of a client-facing advisor agent, a market analysis agent, a portfolio optimization agent, 
+        and a regulatory compliance agent. We'll implement a standardized JSON message protocol between these agents, 
+        allowing them to exchange complex financial data like portfolio compositions, market trends, and investment recommendations.
+         When a client asks about retirement planning, the advisor agent structures the request into a standard format, 
+         sends it to the specialized agents, and then synthesizes their responses. This structured communication ensures 
+         that complex financial concepts are accurately translated between agents without information loss.
+
+  - slide:
+      title: "Exercise: Multi-Agent Architecture Implementation"
+      script: |
+        Time to get hands-on! Write a Python script that spawns multiple agent classes. 
+        Show how they exchange messages—this could be through function calls, a queue, or direct method calls. 
+        Implement your own agent class and see your architecture come to life.
+
+  - slide:
+      title: "Exercise Solution: Multi-Agent Architecture Implementation"
+      script: |
+        Here's our content curation system implementation:
+
+        [DIAGRAM: A flowchart showing three connected agent functions. The finder_agent (left) connects to 
+        curator_agent (middle), which connects to formatter_agent (right), with data flowing left to right.
+        The process_request function wraps around all three, showing the orchestration flow.]
+
+        ```python
+        # Basic agent implementation
+        def finder_agent(topic):
+            print(f"Finding content about: {topic}")
+            # This would search for relevant content
+            return ["Article about AI", "Video about machine learning"]
+
+        def curator_agent(content_list):
+            print(f"Curating content...")
+            # This would filter content by relevance
+            return content_list[0]  # Just return the first item
+
+        def formatter_agent(content):
+            print(f"Formatting: {content}")
+            # This would improve presentation
+            return f"Formatted: {content}"
+
+        # Simple orchestration
+        def process_request(topic):
+            print(f"Processing request about: {topic}")
+            
+            # Step 1: Find content
+            content = finder_agent(topic)
+            
+            # Step 2: Curate content
+            best_content = curator_agent(content)
+            
+            # Step 3: Format content
+            final_content = formatter_agent(best_content)
+            
+            return final_content
+        ```
+
+        [ANIMATION: A simple animation showing data flowing through the pipeline - a search query enters the finder, multiple results flow to the curator, one selected result flows to the formatter, and a polished final result emerges.]
+
+        This implementation shows the core idea - breaking down a complex task into simple agents, each with a specific responsibility. The finder gets content, the curator picks the best, and the formatter makes it look nice. Then we just string these together in sequence to handle the whole task.
+
+
+  - slide:
+      title: "Module 4: Orchestrating Agent Activities"
+      script: |
+        Now that you have multiple agents working together, the next challenge is to coordinate their activities. 
+        Think of this as being the conductor of an orchestra—each agent has its part to play, 
+        but they need to stay in sync for the performance to work. We'll cover how to synchronize agent states, 
+        resolve conflicts, and make sure each agent's progress is consistent before moving on to the next step. 
+        This is where orchestration and state coordination come into play.
+
+        [DIAGRAM: An orchestration flow chart showing a central "Orchestrator" node connected to multiple worker agents.
+        The diagram shows three key orchestration patterns: sequential execution (agents in a chain), parallel execution (multiple agents working simultaneously), and conditional branching (decision points that route to different agents). Arrows show message flow between components, with state data being passed back to the orchestrator after each agent completes its task.]
+  - slide:
+      title: "Orchestrating Agent Activities: Workflow Patterns"
+      script: |
+        Now that we've implemented our agent architecture, we need to focus on how these agents work together
+        in coordinated workflows. Orchestration is all about applying techniques that direct and manage agent 
+        interactions to achieve complex goals. This builds directly on the implementation patterns we just explored,
+        taking those individual agents and creating both sequential and parallel execution patterns to handle 
+        different types of tasks efficiently.
+
+        The orchestration layer needs to be designed with flexibility in mind, allowing you to expand your system 
+        with additional agents as your requirements grow. This involves creating an orchestrator agent that can delegate 
+        tasks appropriately, handle agent responses, manage errors when they occur, and incorporate new capabilities 
+        without redesigning the entire system.
+        
+
+        We'll discuss how to implement an orchestrator agent, delegate tasks, handle agent responses, 
+        manage errors and recovery, and add new agents to your architecture as your needs grow.
+        
+        For our demo, we'll build an automated customer support system that handles technical troubleshooting. 
+        Our orchestrator agent first receives the customer issue and determines what type of problem it is. 
+        For a wifi connectivity issue, it creates a sequential workflow: first delegating to a diagnostic agent that 
+        checks connection status, then to a solution agent that generates step-by-step instructions, 
+        and finally to a verification agent that confirms the solution worked. This sequential pattern ensures each 
+        step builds on the previous results. The orchestrator tracks the state of the interaction, handling cases 
+        where a step fails and alternative solutions need to be explored. This demonstrates how proper orchestration 
+        can manage complex workflows while maintaining a coherent user experience.
+
+  - slide:
+      title: "Orchestrating Agent Activities: Error Handling & Recovery"
+      script: |
+        For our demo, we'll implement a travel planning system that must handle unexpected changes gracefully. 
+        Our orchestrator agent coordinates booking flights, hotels, and activities for a vacation. 
+        When a flight cancellation occurs, our error handling pattern kicks in - the orchestrator detects the failure, 
+        pauses the hotel and activity booking agents, and activates a flight rebooking agent to find alternatives. 
+        Once a new flight is secured, the orchestrator updates the timing parameters for the other agents and resumes 
+        their operation with the modified schedule. This demonstrates how robust error handling in an orchestrator can 
+        maintain system coherence even when parts of a workflow fail, providing users with resilient experiences 
+        despite real-world complications.
+
+  - slide:
+      title: "Exercise: Orchestrating Agent Activities"
+      script: |
+        Let's put orchestration into practice. Build a multi-agent system with a central orchestrator that collects 
+        partial states from each agent. Address conflicts if two agents produce contradictory data. Focus on implementing 
+        proper delegation logic and handling responses from worker agents.
+
+  - slide:
+      title: "Exercise Solution: Orchestrating Agent Activities"
+      script: |
+        Here's our customer support system solution:
+
+        [DIAGRAM: A flow chart showing a sequential workflow with three specialized functions. 
+        Starting with "diagnose" (analyzes customer issue), flowing to "find_solution" (retrieves appropriate fix), and finally to "verify_solution" (confirms effectiveness). A "handle_support_request" function wraps around all three, showing orchestration.]
+
+        ```python
+        # Simple support agents
+        def diagnose(issue):
+            print(f"Diagnosing: {issue}")
+            if "wifi" in issue.lower():
+                return "WiFi connection problem"
+            elif "password" in issue.lower():
+                return "Password reset needed"
+            else:
+                return "Unknown issue"
+                
+        def find_solution(diagnosis):
+            print(f"Finding solution for: {diagnosis}")
+            solutions = {
+                "WiFi connection problem": "Restart your router and reconnect",
+                "Password reset needed": "Click 'forgot password' and check email",
+                "Unknown issue": "Please contact our support team"
+            }
+            return solutions.get(diagnosis, "No solution found")
+            
+        def verify_solution(solution):
+            print(f"Verifying solution: {solution}")
+            return "Solution verified"
+            
+        # Simple orchestrator function
+        def handle_support_request(user_request):
+            print(f"Got support request: {user_request}")
+            
+            # Step 1: Diagnose the problem
+            diagnosis = diagnose(user_request)
+            
+            # Step 2: Find a solution
+            solution = find_solution(diagnosis)
+            
+            # Step 3: Verify the solution works
+            verification = verify_solution(solution)
+            
+            return {
+                "issue": user_request,
+                "diagnosis": diagnosis,
+                "solution": solution,
+                "verification": verification
+            }
+        ```
+
+        [ANIMATION: A sequence showing data transformation through the workflow. 
+        A user's "My WiFi isn't working" request enters the system, transforms into a "WiFi connection problem" diagnosis,
+        becomes a "Restart router" solution, receives verification, and emerges as a complete response package.]
+
+        This solution shows a simple orchestration system with three specialized functions that handle different 
+        parts of the support process. The orchestrator function coordinates them in sequence, 
+        passing the output of each step as input to the next. This demonstrates the core idea of orchestration: 
+        breaking a complex process into simple steps and managing the flow between them.
+
+- slide:
+      title: "Module 4: Routing and Data Flow in Agentic Systems"
+      script: |
+        Now that we've established how to orchestrate agent activities, let's tackle another 
+        crucial aspect of multi-agent systems: how data actually moves between agents. 
+        Effective routing mechanisms ensure the right information reaches the right agent
+        at the right time, which is essential for complex workflows to function correctly.
+
+        Think of routing like a sophisticated mail delivery system. Based on various 
+        properties of a message - its content, metadata, priority, or source - we need to 
+        make intelligent decisions about where it should go next. In this section, we'll 
+        explore different routing strategies and how to implement them in a multi-agent 
+        environment.
+
+        [DIAGRAM: A data flow diagram showing message routing between agents. The central 
+        component is a "Router" that contains decision logic. Multiple message types (shown 
+        as different colored envelopes) flow into the router, which examines properties and 
+        directs them to appropriate agent endpoints. Decision nodes show different routing 
+        patterns: content-based routing, round-robin distribution, and priority-based queuing. 
+        Arrows show message flow with metadata labels attached to each path.]
+  - slide:
+      title: "Routing and Data Flow in Agentic Systems: Routing Strategies"
+      script: |
+        When building multi-agent systems, deciding how messages and data flow between 
+        components is critical to system performance and reliability. Let's explore several 
+        routing patterns that you can implement in your own systems.
+
+        Content-based routing examines the message content itself to determine where it 
+        should go. For instance, queries about pricing might route to a pricing specialist 
+        agent, while technical questions route to a support agent. This approach ensures 
+        messages reach the most qualified handler.
+
+        Round-robin distribution spreads workload evenly across similar agents, which is 
+        useful when you have multiple instances of the same agent type and want to balance 
+        processing load. Priority-based routing ensures critical messages are handled before 
+        less important ones, creating a responsive system even under heavy load.
+
+        For our demo, we'll implement a customer service system with intelligent routing. 
+        When messages arrive, our router analyzes the content using keyword detection and 
+        sentiment analysis. Technical queries route to technical support agents, billing 
+        questions go to account specialists, and urgent messages with negative sentiment 
+        receive priority handling. This ensures customers get the most qualified help 
+        without needing to navigate a complex decision tree themselves. Our router tracks 
+        agent load and response times, adjusting routing decisions dynamically to maintain 
+        consistent service levels even during peak demand.
+  - slide:
+      title: "Routing and Data Flow in Agentic Systems: Data Flow Management"
+      script: |
+        Managing data flow effectively is essential in complex multi-agent systems. Beyond just 
+        deciding where messages should go, we need to consider how data transforms as it moves 
+        through our system.
+
+        At each step of a multi-agent workflow, information may need to be enhanced, filtered, 
+        or reformatted for the next agent in the chain. Think of this as a pipeline where each 
+        component processes data into the exact format needed downstream. These transformations 
+        must be carefully designed to avoid information loss or distortion.
+
+        For our demo, we'll implement a news aggregation system with sophisticated data flow 
+        management. When a user requests news about a specific topic, a classification agent 
+        first determines the relevant categories and keywords. This structured metadata is 
+        passed to multiple source agents (social media, news sites, academic publications) 
+        that each return content in their own format. A normalization agent then transforms 
+        these disparate formats into a standardized schema, preserving source-specific 
+        attributes while creating consistency. Finally, a personalization agent tailors the 
+        presentation based on user preferences. This pipeline demonstrates how each agent adds 
+        value to the data flow while maintaining compatibility with the next stage in the 
+        process.
+
+  - slide:
+      title: "Module 5: State Management in Multi-Agent Systems"
+      script: |
+        As agents interact over multiple turns, keeping track of state becomes essential. 
+        Think of it like keeping a detailed logbook for a team project—everyone needs to know what 
+        has happened so far and what still needs to be done. In this section, 
+        you'll learn how to track and update agent state across multi-turn interactions, handle errors or re-requests, 
+        and distinguish between temporary and persistent data.
+
+        We'll cover advanced state management, including conversation-level state versus system-level state, and 
+        strategies for handling partial errors or re-requests.
+
+        [DIAGRAM: A comprehensive state management diagram with two main sections. The left shows "Conversation State" 
+        (ephemeral) with a chat history and short-term memory component. The right shows "System State" (persistent) 
+        with a database connection. The middle shows state transitions between conversations, including save/load operations 
+        and recovery points. Arrows indicate how state flows between components and across sessions. 
+        Color coding distinguishes between temporary and persistent data types.]
+
+  - slide:
+      title: "State Management in Multi-Agent Systems: Recovery Mechanisms"
+      script: |
+        For our demo, we'll implement a real-time collaborative document editing system with robust recovery mechanisms. 
+        Multiple users might be editing different sections of a document simultaneously, with each edit handled by specialized agent workers. 
+        Our recovery system maintains a transaction log of all edits with periodic checkpoints of the document state. 
+        If a user's connection drops mid-edit, our recovery agent automatically detects the failure, rolls back to the last 
+        consistent state for that section, and preserves all other users' changes. When the user reconnects, they see exactly
+        where they left off with minimal disruption. This demonstrates how effective recovery mechanisms can maintain system
+        integrity even when parts of a distributed system fail unexpectedly, providing resilience without compromising the
+        user experience or losing valuable work.
+
+  - slide:
+      title: "State Management in Multi-Agent Systems: Persistence Strategies"
+      script: |
+        Building on our exploration of agent coordination, let's focus on how systems remember what they've learned. 
+        State management is crucial for creating systems that maintain context across interactions. 
+        You need ways to track and update what each agent knows, distinguishing between temporary information that can be discarded 
+        and critical data that must be preserved.
+
+        The challenge is similar to what we encountered in our orchestration examples, but with a focus on data persistence 
+        rather than just workflow. We need to manage both conversation-level state (what's happening right now) and system-level 
+        state (what should be remembered for the future). When failures happen - and they will - having robust recovery strategies 
+        ensures your system can pick up where it left off.
+        
+        For our demo, let's build an educational tutoring system that maintains student progress across sessions. 
+        Our system uses a state persistence strategy that tracks what concepts a student has mastered, what they're struggling with, 
+        and their learning preferences. When a student starts a new tutoring session about algebra, the system loads their persistent 
+        state from a database, allowing the tutor agent to continue exactly where they left off. The state includes detailed information
+        like which specific algebraic concepts (e.g., quadratic equations) they've mastered and which ones they need more 
+        practice with. If the tutoring session is interrupted, our persistence layer ensures all progress is saved, allowing 
+        seamless resumption later. This persistent state model demonstrates how proper state management creates personalized, 
+        continuous experiences even across disconnected interactions.
+
+  - slide:
+      title: "Exercise: State Management in Multi-Agent Systems"
+      script: |
+        Let's experiment with state management. Design a system that stores conversation info in a database. 
+        Simulate a partial failure and test how your system recovers from interruptions. Consider implementing 
+        both temporary conversation state and persistent system state that survives across sessions.
+
+  - slide:
+      title: "Exercise Solution: State Management in Multi-Agent Systems"
+      script: |
+        Here's a simple state management solution for a tutoring system:
+
+        [DIAGRAM: A flow chart showing state management in a tutoring system. At the top is a "user_states" database. 
+        Three main functions connect to it: save_state (writes data), load_state (reads data), and 
+        update_progress (reads, modifies, writes). Two session functions, start_session and end_session, 
+        act as wrappers around the core functions. Arrows show the data flow between components.]
+
+        ```python
+        # Simple dictionary to store user states
+        user_states = {}
+
+        # Functions to save and load state
+        def save_state(user_id, state):
+            user_states[user_id] = state
+            print(f"Saved state for user {user_id}")
+
+        def load_state(user_id):
+            if user_id in user_states:
+                print(f"Loaded state for user {user_id}")
+                return user_states[user_id]
+            else:
+                print(f"No state found for user {user_id}")
+                return {"new_user": True, "mastered_topics": []}
+
+        # Tutoring system functions
+        def start_session(user_id):
+            # Load previous state if it exists
+            return load_state(user_id)
+
+        def end_session(user_id, state):
+            # Save state for future sessions
+            save_state(user_id, state)
+
+        def update_progress(user_id, topic, mastered):
+            # Update the user's progress
+            state = load_state(user_id)
+            
+            if mastered and topic not in state["mastered_topics"]:
+                state["mastered_topics"].append(topic)
+                
+            save_state(user_id, state)
+            return state
+        ```
+
+        [ANIMATION: A timeline showing the persistence of state across separate sessions. 
+        First, a student learns algebra, and the state is saved. Then a system crash occurs (shown as a lightning bolt). 
+        Finally, a new session begins and the previous state is successfully restored, showing the student's progress is preserved.]
+        # Student learns algebra
+        update_progress("student123", "algebra", True)
+        end_session("student123", state)
+        
+        # Simulate system crash
+        print("System crashed!")
+        
+        # Next session - state should persist
+        print("\nStarting second session...")
+        state = start_session("student123")
+        print(f"Student has already mastered: {state['mastered_topics']}")
+        ```
+
+        This simple solution shows how to maintain state between sessions. 
+        We're just using a dictionary to store user states, but in a real system this would be a database. 
+        The key concept is saving state at the end of each session and loading it at the beginning of the next one. 
+        This way, even if the system crashes, we don't lose information about what the student has learned.
+
+  - slide:
+      title: "Module 6: Multi-Agent State Coordination & Orchestration"
+      script: |
+        When multiple agents are working together, it's crucial to keep their states in sync. 
+        Imagine a relay race—each runner needs to know when to start and when to pass the baton.
+        In this section, you'll learn how to develop coordinated multi-agent systems that synchronize states
+        for coherent task execution. We'll cover state synchronization protocols, conflict resolution strategies, 
+        and how to verify that each agent's progress is consistent before moving on.
+
+        [DIAGRAM: A state coordination system showing multiple agents and a central coordination mechanism. 
+        The diagram features agent states as colored boxes (each with internal state variables), 
+        connected to a central "State Broker" that manages synchronization. 
+        Dotted lines show state update messages flowing between components. 
+        A "Conflict Detection" module highlights areas where agent states conflict, 
+        and a "Resolution Logic" component shows how conflicts are addressed. A timeline at the 
+        bottom illustrates how states stay synchronized across time steps in the system.]
+
+  - slide:
+      title: "Multi-Agent State Coordination & Orchestration: Synchronization Protocols"
+      script: |
+        Taking what we've learned about state management and orchestration, we now need to focus on
+        keeping multiple agents' states coordinated. This synchronization challenge combines concepts 
+        from both areas we've previously explored. When numerous agents operate simultaneously, 
+        they must share a consistent understanding of the world state.
+
+        Developing a robust synchronization protocol requires careful design decisions about how data 
+        is shared, when it's updated, and how to handle conflicts. Remember our tutoring system example? 
+        Now imagine scaling that to dozens of tutors working together with shared students. 
+        We need mechanisms to detect when one agent's knowledge contradicts another's, and clear rules 
+        for resolving those conflicts.
+        
+        For our demo, we'll build a distributed supply chain management system where multiple agents need 
+        synchronized information. Our system includes a warehouse inventory agent, a logistics agent 
+        planning deliveries, a demand forecasting agent, and a procurement agent for ordering new stock. 
+        The synchronization protocol ensures that when inventory levels change, all agents receive consistent updates.
+        For example, when a large order depletes stock of a popular item, our inventory agent broadcasts this state 
+        change to all other agents. The logistics agent adjusts delivery schedules, the forecasting agent updates 
+        future demand predictions, and the procurement agent places expedited restocking orders. 
+        Our synchronization protocol includes timestamp-based versioning to resolve conflicts when multiple updates
+        happen simultaneously, ensuring all agents operate on a consistent view of the supply chain status.
+
+  - slide:
+      title: "Multi-Agent State Coordination & Orchestration: Conflict Resolution"
+      script: |
+        For our demo, we'll implement an autonomous vehicle traffic coordination system where conflict resolution is 
+        critical. Multiple vehicle agents need to navigate an intersection safely without collisions. 
+        Each vehicle agent maintains its own state (position, speed, direction), but conflicting intentions can arise - 
+        for example, two vehicles might both plan to occupy the same space at the same time. O
+        Our conflict resolution system detects these potential collisions using a shared traffic coordination agent 
+        that compares the projected paths of all vehicles. When a conflict is detected, it applies 
+        resolution rules (right-of-way protocols, speed adjustments) and communicates updated plans to 
+        the affected vehicles. This demonstrates how proper conflict resolution prevents system failures in 
+        scenarios where independent agents with their own objectives must coordinate in a shared environment.
+
+  - slide:
+      title: "Exercise: Multi-Agent State Coordination & Orchestration"
+      script: |
+        Let's put it all together! Build a multi-agent system with a central orchestrator that collects
+        partial states from each agent. Address conflicts if two agents produce contradictory data. 
+        Implement synchronization protocols to ensure all agents are operating with consistent information.
+
+  - slide:
+      title: "Exercise Solution: Multi-Agent State Coordination & Orchestration"
+      script: |
+        Here's a simple solution for traffic coordination:
+
+        ```python
+        # Track vehicle positions and plans
+        vehicles = {}
+        
+        # Simple vehicle representation
+        def create_vehicle(vehicle_id, start_pos, end_pos):
+            # Just store basic info about the vehicle
+            return {
+                "id": vehicle_id,
+                "position": start_pos,
+                "destination": end_pos,
+                "path": [start_pos, (start_pos[0]+1, start_pos[1]), end_pos],
+                "step": 0
+            }
+            
+        # Find next position for a vehicle
+        def next_position(vehicle):
+            if vehicle["step"] < len(vehicle["path"]) - 1:
+                return vehicle["path"][vehicle["step"] + 1]
+            return vehicle["position"]
+            
+        # Move vehicle forward
+        def move_vehicle(vehicle):
+            if vehicle["step"] < len(vehicle["path"]) - 1:
+                vehicle["step"] += 1
+                vehicle["position"] = vehicle["path"][vehicle["step"]]
+                print(f"Vehicle {vehicle['id']} moved to {vehicle['position']}")
+                
+        # Check for conflicts between vehicles
+        def find_conflicts():
+            conflicts = []
+            planned_positions = {}
+            
+            # See if any vehicles want to be in the same place
+            for v_id, vehicle in vehicles.items():
+                next_pos = next_position(vehicle)
+                if next_pos in planned_positions:
+                    conflicts.append((v_id, planned_positions[next_pos]))
+                else:
+                    planned_positions[next_pos] = v_id
+            
+            return conflicts
+            
+        # Resolve conflicts by making one vehicle wait
+        def resolve_conflicts():
+            conflicts = find_conflicts()
+            
+            for v1, v2 in conflicts:
+                # Simple strategy: first vehicle waits
+                print(f"Conflict: {v1} and {v2} want the same spot")
+                vehicle = vehicles[v1]
+                
+                # Insert a wait step
+                current = vehicle["path"][vehicle["step"]]
+                vehicle["path"].insert(vehicle["step"] + 1, current)
+                print(f"Vehicle {v1} will wait")
+                
+            return len(conflicts)
+            
+        # Main simulation step
+        def simulation_step():
+            # First resolve conflicts
+            num_conflicts = resolve_conflicts()
+            print(f"Resolved {num_conflicts} conflicts")
+            
+            # Then move all vehicles
+            for vehicle in vehicles.values():
+                move_vehicle(vehicle)
+        
+        # Test the system
+        # Create two vehicles with paths that will conflict
+        vehicles["car1"] = create_vehicle("car1", (0, 0), (2, 2))
+        vehicles["car2"] = create_vehicle("car2", (0, 1), (2, 1))
+        
+        # Run a few steps of simulation
+        print("Starting traffic simulation")
+        for step in range(3):
+            print(f"\nStep {step}")
+            simulation_step()
+        ```
+
+        This simple solution shows how a coordinator can:
+        1. Detect when two agents plan to do something that conflicts 
+        2. Resolve the conflict by adjusting one agent's plan
+        3. Keep all agents moving toward their goals safely
+
+        Instead of complex classes, we're using basic dictionaries and functions to demonstrate the core concept. The coordinator checks for conflicts before each step, resolves them with a simple rule (first vehicle waits), and then allows safe movement.
+
+  - slide:
+      title: "Module 7: Multi-Agent Retrieval Augmented Generation"
+      script: |
+        Retrieval Augmented Generation (RAG) is a powerful technique for combining search and generation. 
+        In a multi-agent context, we can extend RAG by having multiple cooperating agents, each specialized 
+        in certain retrieval tasks. This allows us to orchestrate multi-step retrieval processes and 
+        synthesize information from multiple sources, making our systems even more capable and reliable.
+
+        We'll cover how to use multi-agent tool usage for retrieval and how to orchestrate multi-step retrieval workflows.
+
+        [DIAGRAM: A multi-agent RAG architecture showing specialized retrieval agents on the 
+        left (Scientific Literature Agent, News Agent, Database Agent, and Web Search Agent), 
+        each connected to its own data source. The middle shows a "Retrieval Coordinator" 
+        that manages requests to these agents. On the right is a "Synthesis Agent" that combines 
+        information from multiple sources. Arrows show how user queries flow through the system, 
+        with dotted lines representing optional follow-up queries when information gaps are detected. 
+        A "Knowledge Gap Analyzer" component sits between the coordinator and synthesis agent to identify missing information.]
+
+  - slide:
+      title: "Multi-Agent Retrieval Augmented Generation: Specialized Information Agents"
+      script: |
+        Now let's explore how we can apply what we've learned about agent coordination to enhance traditional 
+        RAG systems. Standard retrieval augmented generation is powerful, but by adding multiple specialized 
+        agents to the mix, we can dramatically improve the quality and reliability of information.
+
+        Building on our earlier discussions about agent specialization and state coordination, 
+        we can create information agents with distinct knowledge domains. Each agent becomes an expert 
+        in retrieving and interpreting specific types of information, similar to how we separated 
+        responsibilities in our architecture examples. This specialization allows for deeper expertise 
+        while the orchestration techniques we've explored help manage the multi-step retrieval process.
+        
+        For our demo, we'll build a scientific research assistant that leverages specialized information agents. 
+        When a researcher asks "What are the latest developments in CRISPR for treating cystic fibrosis?", 
+        our system activates multiple specialized retrieval agents. A scientific literature agent searches 
+        academic databases for peer-reviewed papers, a medical trials agent finds ongoing clinical studies, 
+        a news agent retrieves recent biotech announcements, and a regulatory agent checks FDA approvals. 
+        Each agent not only retrieves information but also provides context - the literature agent highlights
+        methodology limitations, while the trials agent notes patient outcomes. A synthesis agent then combines
+        these specialized insights into a comprehensive research briefing that presents a much richer picture 
+        than any single retrieval source could provide.
+
+  - slide:
+      title: "Multi-Agent Retrieval Augmented Generation: Information Synthesis Workflows"
+      script: |
+        For our demo, we'll implement a legal discovery system for complex litigation cases. 
+        When an attorney needs to build a case around intellectual property infringement, our system coordinates multiple specialized retrieval agents in a multi-step workflow. First, a patent search agent retrieves all relevant patents and their technical details. Then, a case law agent finds precedent cases with similar technology disputes. A corporate research agent gathers information about the defendant's product development timeline. Finally, a document analysis agent scans internal documents for mentions of the technology. What makes this system powerful is its synthesis workflow - after initial retrieval, a gap analysis agent identifies missing information areas and triggers targeted follow-up searches. The final legal analysis agent then creates a comprehensive report connecting technical patent details with specific evidence of infringement, presenting a thoroughly researched argument backed by information from multiple specialized sources.
+
+  - slide:
+      title: "Exercise: Multi-Agent Retrieval Augmented Generation"
+      script: |
+        Let's try it out! Write code that integrates retrieval, chaining, and final answer generation, 
+        using the provided scripts as a guide. Divide retrieval tasks among specialized sub-agents, and
+        test your system with queries that require data from multiple repositories. Practice identifying 
+        missing information and re-retrieving as needed.
+
+  - slide:
+      title: "Exercise Solution: Multi-Agent Retrieval Augmented Generation"
+      script: |
+        Here's a simple solution for our multi-agent research assistant:
+
+        ```python
+        # Simple mock retrieval functions
+        def search_scientific_papers(query):
+            print(f"Searching papers for: {query}")
+            return f"Scientific papers show {query} has a 65% efficacy rate"
+            
+        def search_clinical_trials(query):
+            print(f"Searching clinical trials for: {query}")
+            return f"Three ongoing Phase 2 trials for {query}"
+            
+        def search_news(query):
+            print(f"Searching news for: {query}")
+            return f"Recent breakthrough in {query} announced last month"
+            
+        # Combine information from different sources
+        def synthesize_research(query, sources):
+            print(f"Synthesizing information about: {query}")
+            
+            answer = f"Summary of {query}:\n"
+            for source_name, info in sources.items():
+                answer += f"- {source_name}: {info}\n"
+                
+            return answer
+            
+        # Check if we're missing important information
+        def identify_gaps(query, sources):
+            missing = []
+            
+            if "treatment" in query.lower() and "trials" not in str(sources).lower():
+                missing.append("clinical_trials")
+                
+            if "latest" in query.lower() and "news" not in str(sources).lower():
+                missing.append("news")
+                
+            return missing
+            
+        # Main research function that coordinates everything
+        def research_question(query):
+            print(f"Researching: {query}")
+            
+            # First round of retrieval
+            sources = {
+                "Scientific Literature": search_scientific_papers(query)
+            }
+            
+            # Check what we're missing
+            gaps = identify_gaps(query, sources)
+            
+            # Fill in any gaps
+            if "clinical_trials" in gaps:
+                print("Identified gap: Need clinical trial information")
+                sources["Clinical Trials"] = search_clinical_trials(query)
+                
+            if "news" in gaps:
+                print("Identified gap: Need recent news")
+                sources["Recent News"] = search_news(query)
+                
+            # Create final answer
+            answer = synthesize_research(query, sources)
+            return answer
+            
+        # Try it out
+        result = research_question("latest CRISPR treatment for cystic fibrosis")
+        print("\nFinal answer:")
+        print(result)
+        ```
+
+        This straightforward solution shows the core concept of multi-agent RAG:
+        
+        1. We have specialized functions for different types of information
+        2. We start with basic information and then check for gaps
+        3. We fill those gaps with targeted additional searches
+        4. We synthesize everything into a comprehensive answer
+        
+        This approach is much more powerful than searching everything at once because it allows us to be selective about what we retrieve and make sure we're not missing critical information based on the specific question being asked.
+
