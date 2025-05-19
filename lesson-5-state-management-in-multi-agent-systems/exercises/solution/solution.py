@@ -1,8 +1,16 @@
+"""
+SOLUTION: Transaction History State Management
+
+This solution implements the purchase history tracking feature for the
+Colombian Fruit Market system, demonstrating state management for e-commerce transactions.
+"""
+
 from typing import Dict, List, Any
 import os
 import dotenv
 import time
-from enum import Enum
+from datetime import datetime
+from collections import Counter
 
 from smolagents import (
     ToolCallingAgent,
@@ -10,7 +18,7 @@ from smolagents import (
     tool,
 )
 
-dotenv.load_dotenv(dotenv_path="../.env")
+dotenv.load_dotenv(dotenv_path=".env")
 openai_api_key = os.getenv("UDACITY_OPENAI_API_KEY")
 
 model = OpenAIServerModel(
@@ -19,64 +27,18 @@ model = OpenAIServerModel(
     api_key=openai_api_key,
 )
 
-# Define seasons enum for type safety
-class Season(str, Enum):
-    SPRING = "spring"
-    SUMMER = "summer"
-    FALL = "fall"
-    WINTER = "winter"
-    ALL_YEAR = "all_year"
-
-# Fruit database with seasonal availability
+# Fruit database
 fruit_data = {
-    "lulo": {
-        "description": "A tart, citrusy fruit, often used in juice.", 
-        "origin": "Colombia",
-        "seasons": [Season.SUMMER, Season.FALL]
-    },
-    "mango": {
-        "description": "Sweet and juicy, a tropical favorite.", 
-        "origin": "Colombia",
-        "seasons": [Season.SUMMER]
-    },
-    "granadilla": {
-        "description": "A sweet and seedy fruit with a hard shell.", 
-        "origin": "Colombia",
-        "seasons": [Season.SPRING, Season.SUMMER]
-    },
-    "chontaduro": {
-        "description": "A starchy fruit, often eaten with salt. Rich in nutrients.", 
-        "origin": "Colombia",
-        "seasons": [Season.ALL_YEAR]
-    },
-    "feijoa": {
-        "description": "A small green fruit with a unique, aromatic flavor.", 
-        "origin": "Colombia",
-        "seasons": [Season.FALL, Season.WINTER]
-    },
-    "guava": {
-        "description": "A tropical fruit with sweet flesh and edible seeds.", 
-        "origin": "Colombia",
-        "seasons": [Season.SPRING, Season.FALL]
-    },
-    "pitahaya": {
-        "description": "Dragon fruit with white flesh and black seeds.", 
-        "origin": "Colombia",
-        "seasons": [Season.SPRING, Season.SUMMER]
-    },
-    "uchuva": {
-        "description": "Small orange berries with a sweet-tart flavor.", 
-        "origin": "Colombia",
-        "seasons": [Season.WINTER]
-    }
+    "lulo": {"description": "A tart, citrusy fruit, often used in juice.", "origin": "Colombia", "price": 2.50},
+    "mango": {"description": "Sweet and juicy, a tropical favorite.", "origin": "Colombia", "price": 1.75},
+    "granadilla": {"description": "A sweet and seedy fruit with a hard shell.", "origin": "Colombia", "price": 3.00},
+    "chontaduro": {"description": "A starchy fruit, often eaten with salt. Rich in nutrients.", "origin": "Colombia", "price": 2.25}
 }
 
-# Global state storage with enhanced structure
+# Enhanced global state storage - now includes purchase history
 user_states = {}
 
-# Current season - This would be determined by actual date in a real system
-current_season = Season.SUMMER
-
+# Existing tools from the demo
 @tool
 def get_fruit_description(fruit_name: str) -> str:
     """Retrieves the description of a fruit from the fruit database.
@@ -102,15 +64,8 @@ def add_fruit_preference(user_id: str, fruit_name: str) -> str:
     Returns:
         A message confirming the addition or indicating it's already in preferences.
     """
-    # Initialize user state if it doesn't exist
-    if user_id not in user_states:
-        user_states[user_id] = {
-            "preferences": [],
-            "seasonal_preference": True  # Default to seasonal shopping
-        }
-    user_state = user_states[user_id]
+    user_state = user_states.get(user_id, {"preferences": [], "purchases": []})
     
-    # Ensure preferences list exists
     if "preferences" not in user_state:
         user_state["preferences"] = []
     
@@ -131,18 +86,9 @@ def get_user_preferences(user_id: str) -> List[str]:
     Returns:
         A list of the user's preferred fruits.
     """
-    # Initialize user state if it doesn't exist
-    if user_id not in user_states:
-        user_states[user_id] = {
-            "preferences": [],
-            "seasonal_preference": True
-        }
-    user_state = user_states[user_id]
-    
-    # Ensure preferences list exists
+    user_state = user_states.get(user_id, {"preferences": [], "purchases": []})
     if "preferences" not in user_state:
         user_state["preferences"] = []
-        
     return user_state["preferences"]
 
 @tool
@@ -160,137 +106,113 @@ def save_user_state(user_id: str) -> str:
     return f"User state for {user_id} saved successfully."
 
 @tool
-def get_current_season() -> str:
-    """Gets the current season.
-    
-    Returns:
-        The current season (spring, summer, fall, winter).
-    """
-    return current_season
-
-@tool
-def set_current_season(season: str) -> str:
-    """Sets the current season (for demo purposes).
+def purchase_fruit(user_id: str, fruit_name: str, quantity: int) -> str:
+    """Records a fruit purchase in the user's purchase history.
     
     Args:
-        season: The season to set (spring, summer, fall, winter).
+        user_id: The ID of the user making the purchase.
+        fruit_name: The name of the fruit being purchased.
+        quantity: The quantity of fruit being purchased.
         
     Returns:
-        A confirmation message.
+        A confirmation message with purchase details.
     """
-    global current_season
-    if season.lower() in [s.value for s in Season]:
-        current_season = season.lower()
-        return f"Current season set to {season}."
-    else:
-        return f"Invalid season: {season}. Valid options are spring, summer, fall, winter, or all_year."
-
-@tool
-def get_seasonal_fruits(season: str = None) -> List[str]:
-    """Gets a list of fruits that are in season.
-    
-    Args:
-        season: The season to check for. If not provided, uses the current season.
-        
-    Returns:
-        A list of fruit names that are in season.
-    """
-    check_season = season.lower() if season else current_season
-    
-    if check_season not in [s.value for s in Season]:
-        return f"Invalid season: {check_season}. Valid options are spring, summer, fall, winter, or all_year."
-    
-    seasonal_fruits = []
-    for fruit_name, fruit_info in fruit_data.items():
-        if check_season in [s.lower() for s in fruit_info["seasons"]] or Season.ALL_YEAR.value in [s.lower() for s in fruit_info["seasons"]]:
-            seasonal_fruits.append(fruit_name)
-    
-    return seasonal_fruits
-
-@tool
-def set_user_seasonal_preference(user_id: str, seasonal_only: bool) -> str:
-    """Sets whether a user prefers to see only seasonal fruits.
-    
-    Args:
-        user_id: The ID of the user.
-        seasonal_only: Whether to show only seasonal fruits (True) or all fruits (False).
-        
-    Returns:
-        A confirmation message.
-    """
-    # Initialize user state if it doesn't exist
-    if user_id not in user_states:
-        user_states[user_id] = {
-            "preferences": [],
-            "seasonal_preference": seasonal_only
-        }
-    else:
-        user_states[user_id]["seasonal_preference"] = seasonal_only
-    
-    if seasonal_only:
-        return f"User {user_id} now prefers to see only seasonal fruits."
-    else:
-        return f"User {user_id} now prefers to see all available fruits."
-
-@tool
-def get_user_seasonal_preference(user_id: str) -> bool:
-    """Gets whether a user prefers to see only seasonal fruits.
-    
-    Args:
-        user_id: The ID of the user.
-        
-    Returns:
-        True if the user prefers only seasonal fruits, False otherwise.
-    """
-    # Initialize user state if it doesn't exist
-    if user_id not in user_states:
-        user_states[user_id] = {
-            "preferences": [],
-            "seasonal_preference": True  # Default to seasonal shopping
-        }
-    
-    return user_states[user_id].get("seasonal_preference", True)
-
-@tool
-def get_fruit_seasons(fruit_name: str) -> List[str]:
-    """Gets the seasons when a fruit is available.
-    
-    Args:
-        fruit_name: The name of the fruit to check.
-        
-    Returns:
-        A list of seasons when the fruit is available.
-    """
-    if fruit_name in fruit_data:
-        return fruit_data[fruit_name]["seasons"]
-    return f"Fruit '{fruit_name}' not found in the database."
-
-@tool
-def is_fruit_in_season(fruit_name: str, season: str = None) -> bool:
-    """Checks if a fruit is in season.
-    
-    Args:
-        fruit_name: The name of the fruit to check.
-        season: The season to check for. If not provided, uses the current season.
-        
-    Returns:
-        True if the fruit is in season, False otherwise.
-    """
-    check_season = season.lower() if season else current_season
-    
+    # Validate the fruit exists in our database
     if fruit_name not in fruit_data:
-        return False
+        return f"Sorry, we don't have {fruit_name} available for purchase."
     
-    # All-year fruits are always in season
-    if Season.ALL_YEAR.value in [s.lower() for s in fruit_data[fruit_name]["seasons"]]:
-        return True
+    # Get the price of the fruit
+    price_per_unit = fruit_data[fruit_name]["price"]
+    total_cost = price_per_unit * quantity
     
-    return check_season in [s.lower() for s in fruit_data[fruit_name]["seasons"]]
+    # Create a purchase record
+    purchase_record = {
+        "timestamp": datetime.now().isoformat(),
+        "fruit_name": fruit_name,
+        "quantity": quantity,
+        "price_per_unit": price_per_unit,
+        "total_cost": total_cost
+    }
+    
+    # Initialize user state if needed
+    if user_id not in user_states:
+        user_states[user_id] = {"preferences": [], "purchases": []}
+    elif "purchases" not in user_states[user_id]:
+        user_states[user_id]["purchases"] = []
+    
+    # Add the purchase to the user's history
+    user_states[user_id]["purchases"].append(purchase_record)
+    
+    # Format a nice confirmation message
+    return f"Purchase recorded: {quantity} {fruit_name}(s) for ${total_cost:.2f} (${price_per_unit:.2f} each)"
 
-class SeasonalFruitAdvisorAgent(ToolCallingAgent):
+@tool
+def get_purchase_history(user_id: str) -> List[Dict]:
+    """Retrieves the purchase history for a user.
+    
+    Args:
+        user_id: The ID of the user whose purchase history to retrieve.
+        
+    Returns:
+        A list of the user's past purchases.
+    """
+    # Initialize user state if needed
+    if user_id not in user_states:
+        user_states[user_id] = {"preferences": [], "purchases": []}
+    elif "purchases" not in user_states[user_id]:
+        user_states[user_id]["purchases"] = []
+    
+    # Return the purchase history
+    return user_states[user_id]["purchases"]
+
+@tool
+def get_purchase_summary(user_id: str) -> Dict:
+    """Calculates a summary of the user's purchase history.
+    
+    Args:
+        user_id: The ID of the user whose purchase summary to calculate.
+        
+    Returns:
+        A dictionary containing the total spent, number of transactions, 
+        and most purchased fruit.
+    """
+    # Get purchase history
+    purchases = get_purchase_history(user_id)
+    
+    # Initialize summary values
+    total_spent = 0
+    num_transactions = len(purchases)
+    fruit_counts = Counter()
+    total_fruits_purchased = 0
+    
+    # Calculate summary statistics
+    for purchase in purchases:
+        total_spent += purchase["total_cost"]
+        fruit_counts[purchase["fruit_name"]] += purchase["quantity"]
+        total_fruits_purchased += purchase["quantity"]
+    
+    # Determine the most purchased fruit
+    most_purchased_fruit = None
+    most_purchased_count = 0
+    
+    for fruit, count in fruit_counts.items():
+        if count > most_purchased_count:
+            most_purchased_fruit = fruit
+            most_purchased_count = count
+    
+    # Create and return the summary
+    return {
+        "total_spent": total_spent,
+        "num_transactions": num_transactions,
+        "most_purchased_fruit": most_purchased_fruit,
+        "most_purchased_count": most_purchased_count if most_purchased_fruit else 0,
+        "total_fruits_purchased": total_fruits_purchased
+    }
+
+class FruitAdvisorAgent(ToolCallingAgent):
     """
     Agent for providing information about Colombian fruits,
-    remembering user preferences, and handling seasonal availability.
+    remembering user preferences, and tracking purchase history.
     """
     def __init__(self, model: OpenAIServerModel):
         super().__init__(
@@ -299,50 +221,44 @@ class SeasonalFruitAdvisorAgent(ToolCallingAgent):
                 add_fruit_preference,
                 get_user_preferences,
                 save_user_state,
-                get_current_season,
-                set_current_season,
-                get_seasonal_fruits,
-                set_user_seasonal_preference,
-                get_user_seasonal_preference,
-                get_fruit_seasons,
-                is_fruit_in_season
+                purchase_fruit,
+                get_purchase_history,
+                get_purchase_summary,
             ],
             model=model,
-            name="seasonal_fruit_advisor_agent",
+            name="fruit_advisor_agent",
             description="""
             You are a helpful assistant specializing in Colombian fruits.
             You help users learn about various Colombian fruits, remember their preferences,
-            and provide information about seasonal availability.
+            and now you can also process fruit purchases and track purchase history.
             
-            Use the tools available to you to retrieve information and manage user preferences.
+            Use the tools available to you to:
+            - Retrieve information about fruits
+            - Manage user preferences
+            - Process purchases
+            - Provide purchase history and summaries
+            
             Be enthusiastic and informative about Colombian fruits!
-            
-            Remember that some fruits are only available in certain seasons:
-            - Spring: March, April, May
-            - Summer: June, July, August
-            - Fall: September, October, November
-            - Winter: December, January, February
-            - Some fruits are available all year round
             """,
         )
 
-class SeasonalOrchestratorAgent(ToolCallingAgent):
+class OrchestratorAgent(ToolCallingAgent):
     """
-    Orchestrates the seasonal fruit advisor system, managing user sessions
-    and delegating to the fruit advisor agent.
+    Orchestrates the fruit advisor system with purchase tracking.
     """
     def __init__(self, model: OpenAIServerModel):
         super().__init__(
             tools=[],
             model=model,
-            name="seasonal_orchestrator_agent",
+            name="orchestrator_agent",
             description="""
             You are an orchestrator agent that manages the Colombian fruit advisory system.
             Your role is to coordinate interactions between users and the fruit advisor agent,
-            ensuring that user state is properly managed and preserved across sessions.
+            ensuring that user state (preferences and purchase history) is properly 
+            managed and preserved across sessions.
             """,
         )
-        self.fruit_advisor = SeasonalFruitAdvisorAgent(model)
+        self.fruit_advisor = FruitAdvisorAgent(model)
 
     def process_user_message(self, user_id: str, message: str) -> str:
         """
@@ -355,65 +271,55 @@ class SeasonalOrchestratorAgent(ToolCallingAgent):
         Returns:
             A response from the fruit advisor agent.
         """
-        # First, we need to load any existing preferences and settings
+        # Load any existing preferences
         current_preferences = get_user_preferences(user_id)
-        seasonal_preference = get_user_seasonal_preference(user_id)
-        current_season_value = get_current_season()
-        seasonal_fruits = get_seasonal_fruits()
+        
+        # Load any existing purchase history
+        purchase_history = get_purchase_history(user_id)
         
         # Construct a prompt for the fruit advisor agent
         prompt = f"""
         User ID: {user_id}
         Current preferences: {', '.join(current_preferences) if current_preferences else 'None yet'}
-        Current season: {current_season_value}
-        User prefers seasonal fruits only: {seasonal_preference}
-        Currently in-season fruits: {', '.join(seasonal_fruits)}
+        Purchase history: {len(purchase_history)} previous transactions
         
         The user says: "{message}"
         
-        If the user is asking about a fruit, use get_fruit_description to provide information about it.
-        Also check if the fruit is in season using is_fruit_in_season and inform the user.
-        
+        If the user is asking about a fruit, use get_fruit_description to provide information.
         If the user expresses interest in a fruit, use add_fruit_preference to save it.
-        
-        If the user wants to know what fruits are in season, use get_seasonal_fruits.
-        
-        If the user wants to change seasons (for demo purposes), use set_current_season.
-        
-        If the user wants to change their seasonal preference, use set_user_seasonal_preference.
-        
         If the user wants to know their preferences, use get_user_preferences.
+        
+        If the user wants to buy a fruit, use purchase_fruit to record the transaction.
+        If the user asks about their purchase history, use get_purchase_history.
+        If the user wants a summary of their purchases, use get_purchase_summary.
         
         Remember to save the user's state with save_user_state before ending the conversation.
         
         Respond in a friendly, informative way in both English and a bit of Spanish.
-        If a fruit is not in season, suggest alternatives that are currently in season.
         """
         
         return self.fruit_advisor.run(prompt)
 
-def run_seasonal_demo():
+def run_demo():
     """
-    Runs the seasonal fruit advisor demo with simulated user interactions.
+    Runs the fruit advisor demo with purchase tracking.
     """
-    print("🍎 Colombian Fruit Market with Seasonal Availability 🍍")
+    print("🍎 Colombian Fruit Market with Purchase Tracking 🍍")
     print("="*70)
     
-    orchestrator = SeasonalOrchestratorAgent(model)
+    orchestrator = OrchestratorAgent(model)
     user_id = "user123"
     
-    print("\n--- First Session (Summer) ---")
-    print(f"Current Season: {get_current_season()}")
-    print(f"Fruits in season: {', '.join(get_seasonal_fruits())}")
+    print("\n--- First Session ---")
     
-    # Simulated user messages for summer
+    # Simulated user messages
     messages = [
-        "Hi! What fruits are in season right now?",
-        "Tell me about lulo. Is it in season?",
-        "I'd like to try lulo. Add it to my preferences.",
-        "What about uchuva? Is that available now?",
-        "I prefer to see all fruits, not just seasonal ones.",
-        "What are my preferences so far?",
+        "Hi! What kind of fruits do you have?",
+        "Tell me about lulo.",
+        "I'd like to buy 3 lulos please.",
+        "I also want to try mango. Can I buy 2 mangos?",
+        "What's my purchase history so far?",
+        "Can you give me a summary of my purchases?",
         "Thank you! I'll come back later."
     ]
     
@@ -426,33 +332,21 @@ def run_seasonal_demo():
     
     # Simulate system restart/new session
     print("\n" + "="*70)
-    print("--- Simulating a System Restart and Season Change ---")
+    print("--- Simulating a System Restart ---")
     print("The system is restarting and will reload user state...")
-    set_current_season(Season.WINTER.value)
-    print(f"Season has changed to: {get_current_season()}")
-    print(f"Fruits in season: {', '.join(get_seasonal_fruits())}")
     print("="*70)
     
     # Create a new orchestrator (simulating a system restart)
-    new_orchestrator = SeasonalOrchestratorAgent(model)
-    
-    # Retrieve the user's preferences to show state persistence
-    current_preferences = get_user_preferences(user_id)
-    seasonal_preference = get_user_seasonal_preference(user_id)
-    print(f"\nAfter system restart, {user_id}'s preferences: {current_preferences}")
-    print(f"Seasonal preference setting: {seasonal_preference}")
+    new_orchestrator = OrchestratorAgent(model)
     
     # Continue the conversation in the new session
-    print("\n--- Continuing in New Session (Winter) ---")
+    print("\n--- Continuing in New Session ---")
     
-    # New set of messages for winter
+    # New set of messages
     new_messages = [
-        "Hello again! What fruits are available in this season?",
-        "Is lulo available now?",
-        "What fruits would you recommend that are in season?",
-        "Add uchuva to my preferences, please.",
-        "I changed my mind, I want to only see seasonal fruits now.",
-        "What are all my preferences so far?",
+        "Hello again! I'd like to see my purchase history.",
+        "Great! I'd like to buy 4 granadillas.",
+        "Can you give me an updated summary of all my purchases?",
         "Thank you for your help!"
     ]
     
@@ -463,14 +357,24 @@ def run_seasonal_demo():
         print(f"Agent: {response}")
         time.sleep(0.5)  # Brief pause for readability
     
-    # Final state check
-    final_preferences = get_user_preferences(user_id)
-    final_seasonal_pref = get_user_seasonal_preference(user_id)
+    # Final state check - display purchase history and summary
+    purchase_history = get_purchase_history(user_id)
+    purchase_summary = get_purchase_summary(user_id)
+    
     print("\n" + "="*70)
-    print(f"Final state: {user_id}'s fruit preferences are: {final_preferences}")
-    print(f"Final seasonal preference setting: {final_seasonal_pref}")
-    print("="*70)
-    print("\nDemo complete! This demonstrates seasonal availability state management across sessions.")
+    print("Final Purchase History:")
+    for i, purchase in enumerate(purchase_history):
+        print(f"  {i+1}. {purchase['quantity']} {purchase['fruit_name']}(s) for ${purchase['total_cost']:.2f} on {purchase['timestamp'].split('T')[0]}")
+    
+    print("\nPurchase Summary:")
+    print(f"  - Total spent: ${purchase_summary['total_spent']:.2f}")
+    print(f"  - Number of transactions: {purchase_summary['num_transactions']}")
+    print(f"  - Total fruits purchased: {purchase_summary['total_fruits_purchased']}")
+    if purchase_summary['most_purchased_fruit']:
+        print(f"  - Most purchased fruit: {purchase_summary['most_purchased_fruit']} ({purchase_summary['most_purchased_count']} units)")
+    
+    print("\n" + "="*70)
+    print("Demo complete! This demonstrates state persistence and transaction tracking across sessions.")
 
 if __name__ == "__main__":
-    run_seasonal_demo()
+    run_demo()

@@ -1,22 +1,41 @@
-# Purpose of This Directory
+# State Management in Multi-Agent Systems Exercises
 
-This directory should contain any files and instructions necessary for exercises created for this lesson.
+This directory contains exercises focused on implementing effective state management strategies in multi-agent systems.
 
-## Folder Structure
+## Exercise Overview
 
-Each exercise should be contained in its own folder using the naming convention of `concept#-name-of-concept`. See example below:
+In these exercises, you'll learn to create robust state management mechanisms by:
+
+1. Implementing different state storage and sharing patterns
+2. Managing consistency across distributed agent states
+3. Creating transactional workflows that maintain system integrity
+4. Handling concurrent state access and modifications
+
+## Key Concepts
+
+- State storage and sharing mechanisms
+- Consistency models for distributed agent systems
+- Transactional operations and rollbacks
+- Conflict resolution strategies
+
+## Exercise Structure
+
+The exercises provide scaffolding code that you'll extend to create effective state management systems:
 
 ```
 exercises
-    |_ concept1-hello-world
-    |   |_ starter
-    |   |   |_ exercise-files
-    |   |_ solution
-    |   |   |_ solution_files
-    |_ concept2-foo-bar
-    |   |_ starter
-    |   |   |_ exercise-files
-    |   |_ solution
-    |   |   |_ solution_files
-    |_ README.md
+    |_ starter
+    |   |_ README.md - Contains exercise instructions
+    |   |_ starter.py - Provides code scaffolding for your implementation
+    |_ solution
+    |   |_ README.md - Explains the solution approach
+    |   |_ solution.py - Contains a complete implementation
 ```
+
+## Learning Outcomes
+
+By completing these exercises, you'll be able to:
+- Design effective state management architectures for agent systems
+- Implement mechanisms to ensure consistency across distributed states
+- Create transactional workflows that maintain system integrity
+- Handle concurrent state modifications and resolve conflicts

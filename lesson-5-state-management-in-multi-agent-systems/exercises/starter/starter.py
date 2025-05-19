@@ -21,6 +21,7 @@ import os
 import dotenv
 import time
 from datetime import datetime  # Added for timestamp functionality
+from collections import Counter  # Added for counting most purchased fruits
 
 from smolagents import (
     ToolCallingAgent,
@@ -168,9 +169,9 @@ def get_purchase_summary(user_id: str) -> Dict:
     # - Total number of fruits purchased
     pass
 
-class EnhancedFruitAdvisorAgent(ToolCallingAgent):
+class FruitAdvisorAgent(ToolCallingAgent):
     """
-    Enhanced agent for providing information about Colombian fruits,
+    Agent for providing information about Colombian fruits,
     remembering user preferences, and tracking purchase history.
     """
     def __init__(self, model: OpenAIServerModel):
@@ -185,7 +186,7 @@ class EnhancedFruitAdvisorAgent(ToolCallingAgent):
                 get_purchase_summary,  # New tool
             ],
             model=model,
-            name="enhanced_fruit_advisor_agent",
+            name="fruit_advisor_agent",
             description="""
             You are a helpful assistant specializing in Colombian fruits.
             You help users learn about various Colombian fruits, remember their preferences,
@@ -201,15 +202,15 @@ class EnhancedFruitAdvisorAgent(ToolCallingAgent):
             """,
         )
 
-class EnhancedOrchestratorAgent(ToolCallingAgent):
+class OrchestratorAgent(ToolCallingAgent):
     """
-    Orchestrates the enhanced fruit advisor system with purchase tracking.
+    Orchestrates the fruit advisor system with purchase tracking.
     """
     def __init__(self, model: OpenAIServerModel):
         super().__init__(
             tools=[],
             model=model,
-            name="enhanced_orchestrator_agent",
+            name="orchestrator_agent",
             description="""
             You are an orchestrator agent that manages the Colombian fruit advisory system.
             Your role is to coordinate interactions between users and the fruit advisor agent,
@@ -217,7 +218,7 @@ class EnhancedOrchestratorAgent(ToolCallingAgent):
             managed and preserved across sessions.
             """,
         )
-        self.fruit_advisor = EnhancedFruitAdvisorAgent(model)
+        self.fruit_advisor = FruitAdvisorAgent(model)
 
     def process_user_message(self, user_id: str, message: str) -> str:
         """
@@ -258,14 +259,14 @@ class EnhancedOrchestratorAgent(ToolCallingAgent):
         
         return self.fruit_advisor.run(prompt)
 
-def run_enhanced_demo():
+def run_demo():
     """
-    Runs the enhanced fruit advisor demo with purchase tracking.
+    Runs the fruit advisor demo with purchase tracking.
     """
-    print("🍎 Enhanced Colombian Fruit Market with Purchase Tracking 🍍")
+    print("🍎 Colombian Fruit Market with Purchase Tracking 🍍")
     print("="*70)
     
-    orchestrator = EnhancedOrchestratorAgent(model)
+    orchestrator = OrchestratorAgent(model)
     user_id = "user123"
     
     print("\n--- First Session ---")
@@ -295,7 +296,7 @@ def run_enhanced_demo():
     print("="*70)
     
     # Create a new orchestrator (simulating a system restart)
-    new_orchestrator = EnhancedOrchestratorAgent(model)
+    new_orchestrator = OrchestratorAgent(model)
     
     # Continue the conversation in the new session
     print("\n--- Continuing in New Session ---")
@@ -322,4 +323,4 @@ def run_enhanced_demo():
     print("Demo complete! This demonstrates state persistence and transaction tracking across sessions.")
 
 if __name__ == "__main__":
-    run_enhanced_demo()
+    run_demo()
