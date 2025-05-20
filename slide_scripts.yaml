@@ -234,7 +234,7 @@ slides:
 
 
   - slide:
-      title: "Module 4: Orchestrating Agent Activities"
+      title: "Module 3: Orchestrating Agent Activities"
       script: |
         Now that you have multiple agents working together, the next challenge is to coordinate their activities. 
         Think of this as being the conductor of an orchestra—each agent has its part to play, 
@@ -419,6 +419,56 @@ slides:
         presentation based on user preferences. This pipeline demonstrates how each agent adds 
         value to the data flow while maintaining compatibility with the next stage in the 
         process.
+  - slide:
+        title: "Exercise: Routing and Data Flow in Agentic Systems"
+        script: |
+            Let's put routing into practice. Build a multi-agent system with a routing mechanism that 
+            directs messages based on content or metadata. Implement different routing strategies 
+            (content-based, round-robin, priority-based) and show how data flows through the system.
+  - slide:
+        title: "Exercise Solution: Routing and Data Flow in Agentic Systems"
+        script: |
+            Here's our customer service routing solution:
+
+            [DIAGRAM: A flowchart showing a routing system with three connected components. 
+            The "Router" (center) connects to "Content Analysis" (left) and "Routing Logic" (right). 
+            Arrows show the data flow from the user request to the router, then to content analysis, 
+            and finally to routing logic.]
+
+            ```python
+            # Simple routing system
+            def analyze_content(message):
+                print(f"Analyzing content: {message}")
+                if "urgent" in message.lower():
+                    return "high_priority"
+                elif "billing" in message.lower():
+                    return "billing"
+                else:
+                    return "general"
+
+            def route_message(message):
+                print(f"Routing message: {message}")
+                category = analyze_content(message)
+                
+                if category == "high_priority":
+                    return "Routing to urgent support agent"
+                elif category == "billing":
+                    return "Routing to billing specialist"
+                else:
+                    return "Routing to general support agent"
+
+            # Example usage
+            user_message = "I need help with my billing issue!"
+            response = route_message(user_message)
+            print(response)
+            ```
+
+            [ANIMATION: A simple animation showing a message entering the system, being analyzed, 
+            and then routed to the appropriate agent based on its content.]
+
+            This solution demonstrates a basic routing system that analyzes incoming messages and directs them 
+            to the appropriate agent based on their content. The routing logic is straightforward, but it can be 
+            expanded with more complex analysis techniques as needed.
 
   - slide:
       title: "Module 5: State Management in Multi-Agent Systems"
