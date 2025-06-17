@@ -416,55 +416,121 @@ class CustomPastaDesignerAgent(ToolCallingAgent):
             description="Agent responsible for creating custom pasta recipes based on customer requirements and available ingredients."
         )
 
-# ======= Factory Orchestrator =======
+# ======= Orchestrator =======
 
-class PastaFactoryOrchestrator:
-    """Coordinates the multi-agent pasta factory system."""
+class Orchestrator(ToolCallingAgent):
+    """Orchestrator that coordinates the multi-agent pasta factory system."""
     
     def __init__(self, model):
+        self.model = model
+        
+        # Initialize specialized agents
         self.order_processor = OrderProcessorAgent(model)
         self.inventory_manager = InventoryManagerAgent(model)
         self.production_manager = ProductionManagerAgent(model)
         self.pasta_designer = CustomPastaDesignerAgent(model)
-        
-    def extract_pasta_details(self, response: str) -> Dict[str, Any]:
-        """
-        Extract pasta details from an agent response.
-        
-        Args:
-            response: The agent's response text
+
+        @tool
+        def process_order_info(customer_request: str) -> str:
+            """Process customer order information to extract details.
             
-        Returns:
-            Dictionary with extracted pasta shape, quantity, etc.
-        """
-        order_details = {}
-        
-        # Extract pasta shape by looking for known shapes first
-        for shape in factory_state.known_pasta_shapes:
-            if shape.lower() in response.lower():
-                order_details["pasta_shape"] = shape
-                break
-        
-        # Extract order ID if present
-        order_id_match = re.search(r"ORD-\d{4}", response)
-        if order_id_match:
-            order_details["order_id"] = order_id_match.group(0)
-        
-        # Extract quantity
-        quantity_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:kg|kgs|kilograms?)", response, re.IGNORECASE)
-        if quantity_match:
-            order_details["quantity"] = float(quantity_match.group(1))
-        
-        # Check if this seems like a priority order
-        if any(term in response.lower() for term in ["rush", "emergency", "urgent", "priority", "asap"]):
-            if "emergency" in response.lower():
-                order_details["priority"] = 3
-            else:
-                order_details["priority"] = 2
-        else:
-            order_details["priority"] = 1
+            Args:
+                customer_request: The customer's order request
+                
+            Returns:
+                Processed order information with pasta shape and quantity
+            """
+            return self.order_processor.run(f"""
+            The customer says: "{customer_request}"
             
-        return order_details
+            First, identify:
+            1. What pasta shape they want
+            2. How much they want (in kg)
+            
+            Then check if we make that pasta shape using check_pasta_recipe.
+            Generate an order ID using generate_order_id.
+            
+            If the pasta shape is not one we make, you can use list_available_pasta_shapes to see what we offer.
+            """)
+
+        @tool
+        def manage_inventory(order_details: str) -> str:
+            """Check and manage inventory for an order.
+            
+            Args:
+                order_details: Details about the order including pasta shape and quantity
+                
+            Returns:
+                Inventory management result
+            """
+            return self.inventory_manager.run(f"""
+            Order details: {order_details}
+            
+            Check if we have enough ingredients for this order:
+            1. Use check_pasta_recipe to get the ingredient requirements
+            2. Use check_inventory to verify we have sufficient ingredients
+            3. Calculate if we have enough ingredients to fulfill this order.
+            """)
+
+        @tool
+        def schedule_production(order_info: str, priority: int = 1) -> str:
+            """Schedule production for an order.
+            
+            Args:
+                order_info: Information about the order to schedule
+                priority: Order priority (1=normal, 2=rush, 3=emergency)
+                
+            Returns:
+                Production scheduling result with delivery date
+            """
+            return self.production_manager.run(f"""
+            Order information: {order_info}
+            Priority level: {priority}
+            
+            Schedule this order for production:
+            1. Add the order to the production queue using add_to_production_queue
+            2. Use the specified priority level
+            3. Provide the customer with production status and delivery estimate
+            """)
+
+        @tool
+        def design_custom_pasta(customer_request: str) -> str:
+            """Design a custom pasta recipe based on customer requirements.
+            
+            Args:
+                customer_request: Customer's custom pasta request
+                
+            Returns:
+                Custom pasta design result
+            """
+            return self.pasta_designer.run(f"""
+            The customer says: "{customer_request}"
+            
+            They want a custom pasta recipe. Design a custom pasta recipe based on their requirements:
+            1. First, check what ingredients we have available using check_inventory
+            2. Create a custom pasta recipe with appropriate ingredient ratios
+            3. Name the pasta appropriately based on its characteristics
+            4. Use the create_custom_pasta_recipe tool to save the recipe
+            """)
+
+        super().__init__(
+            tools=[process_order_info, manage_inventory, schedule_production, design_custom_pasta],
+            model=model,
+            name="orchestrator",
+            description="""
+            You are the orchestrator for a pasta factory system.
+            You coordinate between the order processor, inventory manager, production manager, and custom pasta designer.
+            
+            For customer orders, follow this workflow:
+            1. Use process_order_info to understand what the customer wants
+            2. If it's a custom pasta request, use design_custom_pasta first
+            3. Use manage_inventory to check ingredient availability
+            4. Use schedule_production to add to queue and get delivery date
+            
+            Determine priority level from customer language (rush, emergency, urgent = higher priority).
+            Always provide clear responses to customers about their order status.
+            """,
+        )
         
     def process_order(self, customer_request: str) -> str:
         """
@@ -480,163 +546,35 @@ class PastaFactoryOrchestrator:
         is_custom_request = any(term in customer_request.lower() for term in 
                                ["custom", "special", "unique", "create", "design", "make", "new"])
         
-        if is_custom_request:
-            return self.process_custom_order(customer_request)
-        
-        # Step 1: Parse the order
-        order_response = self.order_processor.run(
-            f"""The customer says: "{customer_request}"
-            
-            First, identify:
-            1. What pasta shape they want
-            2. How much they want (in kg)
-            
-            Then check if we make that pasta shape using check_pasta_recipe.
-            Generate an order ID using generate_order_id.
-            
-            If the pasta shape is not one we make, you can use list_available_pasta_shapes to see what we offer.
-            """
-        )
-        
-        # Step 2: Extract order details
-        order_details = self.extract_pasta_details(order_response)
-        
-        # If pasta shape is missing, try to identify available alternatives
-        if "pasta_shape" not in order_details:
-            return f"I'm sorry, I couldn't identify which pasta shape you want. We offer: {', '.join(factory_state.known_pasta_shapes)}. Please specify one of these pasta shapes."
-        
-        if "quantity" not in order_details:
-            return "Please specify how much pasta you would like to order in kilograms (kg)."
-        
-        if "order_id" not in order_details:
-            # Generate a new order ID if not found
-            order_details["order_id"] = generate_order_id()
-        
-        # Step 3: Check ingredient availability
-        pasta_shape = order_details["pasta_shape"]
-        quantity = order_details["quantity"]
-        
-        inventory_response = self.inventory_manager.run(
-            f"""
-            We have an order for {quantity}kg of {pasta_shape}.
-            Check the recipe using check_pasta_recipe and verify we have enough ingredients in inventory using check_inventory.
-            Calculate if we have enough ingredients to fulfill this order.
-            """
-        )
-        
-        # Check if inventory has enough - look for negative signals
-        inventory_issue = any(term in inventory_response.lower() for term in 
-                            ["not enough", "insufficient", "low", "out of", "don't have"])
-        
-        if inventory_issue:
-            return f"I'm sorry, we don't have enough ingredients to fulfill your order for {quantity}kg of {pasta_shape} at this time. Would you like to order a smaller amount or a different pasta shape?"
-        
-        # Step 4: Add to production queue with appropriate priority
-        priority = order_details.get("priority", 1)
-        
-        queue_response = self.production_manager.run(
-            f"""
-            Add an order to the production queue with the following details:
-            - Order ID: {order_details["order_id"]}
-            - Pasta Shape: {pasta_shape}
-            - Quantity: {quantity}kg
-            - Priority: {priority}
-            
-            Use the add_to_production_queue tool to add this order.
-            """
-        )
-        
-        # Step 5: Get estimated delivery date
-        delivery_match = re.search(r"\d{4}-\d{2}-\d{2}", queue_response)
-        estimated_date = "as soon as possible"
-        if delivery_match:
-            estimated_date = delivery_match.group(0)
-        
-        # Generate response based on priority
-        if priority == 3:
-            return f"EMERGENCY ORDER CONFIRMED! Your order for {quantity}kg of {pasta_shape} (Order #{order_details['order_id']}) has been given highest priority. We'll have it ready by {estimated_date}."
-        elif priority == 2:
-            return f"RUSH ORDER CONFIRMED! Your rush order for {quantity}kg of {pasta_shape} (Order #{order_details['order_id']}) has been prioritized. Expected delivery by {estimated_date}."
-        else:
-            return f"Thank you for your order! We've queued {quantity}kg of {pasta_shape} (Order #{order_details['order_id']}). Your pasta will be ready for pickup/delivery by {estimated_date}."
-
-    def process_custom_order(self, customer_request: str) -> str:
-        """
-        Process a custom pasta order request.
-        
-        Args:
-            customer_request: Natural language custom pasta request
-            
-        Returns:
-            Response to customer with custom order details
-        """
-        # Step 1: Design the custom pasta
-        design_response = self.pasta_designer.run(
-            f"""The customer says: "{customer_request}"
-            
-            They want a custom pasta recipe. Design a custom pasta recipe based on their requirements.
-            First, check what ingredients we have available using check_inventory.
-            Then, create a custom pasta recipe with appropriate ingredient ratios.
-            
-            Name the pasta appropriately based on its characteristics.
-            Use the create_custom_pasta_recipe tool to save the recipe.
-            """
-        )
-        
-        # Extract the custom pasta name
-        pasta_name_match = re.search(r"['\"]([^'\"]+)['\"]", design_response)
-        if not pasta_name_match:
-            return "I'm sorry, I couldn't design a custom pasta based on your requirements. Could you please provide more specific details about what ingredients you'd like to include or avoid?"
-        
-        custom_pasta_name = pasta_name_match.group(1)
-        
-        # Generate an order ID
-        order_id = generate_order_id()
-        
-        # Extract quantity or use default
-        quantity_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:kg|kgs|kilograms?)", customer_request, re.IGNORECASE)
-        quantity = 1.0  # Default
-        if quantity_match:
-            quantity = float(quantity_match.group(1))
-        
-        # Check if this is a priority order
-        priority = 1
+        # Determine priority from customer language
+        priority = 1  # default
         if any(term in customer_request.lower() for term in ["rush", "emergency", "urgent", "priority", "asap"]):
             if "emergency" in customer_request.lower():
                 priority = 3
             else:
                 priority = 2
         
-        # Add to production queue
-        queue_response = self.production_manager.run(
-            f"""
-            Add an order to the production queue with the following details:
-            - Order ID: {order_id}
-            - Pasta Shape: {custom_pasta_name}
-            - Quantity: {quantity}kg
-            - Priority: {priority}
-            
-            Use the add_to_production_queue tool to add this order.
-            """
-        )
+        context = f"""
+        Customer request: "{customer_request}"
+        Is custom request: {is_custom_request}
+        Priority level: {priority}
         
-        # Get estimated delivery date
-        delivery_match = re.search(r"\d{4}-\d{2}-\d{2}", queue_response)
-        estimated_date = "as soon as possible"
-        if delivery_match:
-            estimated_date = delivery_match.group(0)
+        Process this order by coordinating with our specialized agents:
+        1. First process the order information to understand what they want
+        2. If it's a custom pasta request, design the custom pasta first
+        3. Check and manage inventory to ensure we can fulfill it
+        4. Schedule production with appropriate priority and provide delivery information
         
-        # Generate response
-        custom_desc = re.sub(r'^.*successfully created', '', design_response)
-        custom_desc = re.sub(r'Now I will.*$', '', custom_desc).strip()
+        If at any step we cannot fulfill the order, explain why to the customer.
+        """
         
-        return f"Excellent! We've created a custom pasta recipe for you: '{custom_pasta_name}'{custom_desc}. Your order of {quantity}kg has been queued (Order #{order_id}) and will be ready by {estimated_date}."
+        return self.run(context)
 
 # ======= Main Demo =======
 
 def run_demo():
     """Run a demonstration of the pasta factory system."""
-    orchestrator = PastaFactoryOrchestrator(model)
+    orchestrator = Orchestrator(model)
     
     print("Welcome to the Pasta Factory Multi-Agent System!")
     print("Initial Factory State:", json.dumps(factory_state.to_dict(), indent=2))

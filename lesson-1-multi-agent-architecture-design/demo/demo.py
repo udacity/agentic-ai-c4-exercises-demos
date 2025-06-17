@@ -121,14 +121,14 @@ def create_diagram(title,
         plt.Line2D([0], [0], marker='o', color='w', markerfacecolor="#6495ED", markersize=15, label='Agent'),
         plt.Line2D([0], [0], marker='s', color='w', markerfacecolor="#FFD700", markersize=15, label='Tool/Resource'),
         plt.Line2D([0], [0], marker='d', color='w', markerfacecolor="#FF6347", markersize=15, label='User Interface'),
-        plt.Line2D([0], [0], marker='h', color='w', markerfacecolor="#90EE90", markersize=15, label='Data Component')
+        #plt.Line2D([0], [0], marker='h', color='w', markerfacecolor="#90EE90", markersize=15, label='Data Component')
     ]
     plt.legend(handles=legend_elements, loc='upper right', fontsize=12)
 
     plt.axis("off")
     plt.tight_layout()
+    plt.savefig(f"{title}.png", dpi=300, bbox_inches='tight')
     plt.show()
-
 
 def demo_uluru_cultural_center():
     nodes = [
@@ -152,13 +152,9 @@ def demo_uluru_cultural_center():
         ("Language Identification", "Visitor Input")
     ]
     
-    edge_labels = {
-        ("Language Identification", "Visitor Input"): "Formatted Response"
-    }
-    
     node_types = {
         "Visitor Input": "user",
-        "Language Identification": "tool", 
+        "Language Identification": "agent", 
         "Arrernte Language Specialist": "agent",
         "Pitjantjatjara Language Specialist": "agent",
         "Knowledge Base Lookup": "tool"
@@ -170,7 +166,6 @@ def demo_uluru_cultural_center():
         edges,
         None,
         node_types,
-        edge_labels
     )
 
 if __name__ == "__main__":
