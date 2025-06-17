@@ -1,27 +1,25 @@
 """
-EXERCISE: Transaction History State Management
+EXERCISE: Multi-Agent State Management with Purchase Tracking
 
 In this exercise, you'll extend the Colombian Fruit Market system by implementing
-a purchase history tracking feature. This represents a practical extension of state
-management that's common in real e-commerce systems.
+purchase tracking functionality while maintaining the multi-agent orchestration patterns.
 
 You'll need to:
-1. Add a purchase_fruit tool to record transactions
-2. Track purchase dates and quantities
-3. Add a view_purchase_history tool
-4. Implement purchase summary functionality
-5. Make the FruitAdvisorAgent aware of purchase history
+1. Implement the purchase_fruit tool to record transactions
+2. Implement get_purchase_summary tool for analytics
+3. Add the purchase summary tool to the PurchaseAgent
+4. Add 'summary' action support to the orchestrator's handle_purchase tool
 
-This exercise demonstrates how state management can be extended to handle
-complex transaction data while maintaining user context across sessions.
+This demonstrates extending multi-agent systems with new capabilities while
+maintaining proper orchestration patterns.
 """
 
 from typing import Dict, List, Any
 import os
 import dotenv
 import time
-from datetime import datetime  # Added for timestamp functionality
-from collections import Counter  # Added for counting most purchased fruits
+from datetime import datetime
+from collections import Counter
 
 from smolagents import (
     ToolCallingAgent,
@@ -112,11 +110,9 @@ def save_user_state(user_id: str) -> str:
     Returns:
         A confirmation message.
     """
-    # This would connect to a real database in a production environment
-    # For this demo, the state is already in memory in the user_states dict
     return f"User state for {user_id} saved successfully."
 
-# TODO: Implement this new tool to record a fruit purchase
+# TODO: Implement this tool to record fruit purchases
 @tool
 def purchase_fruit(user_id: str, fruit_name: str, quantity: int) -> str:
     """Records a fruit purchase in the user's purchase history.
@@ -129,12 +125,9 @@ def purchase_fruit(user_id: str, fruit_name: str, quantity: int) -> str:
     Returns:
         A confirmation message with purchase details.
     """
-    # TODO: Create a purchase record and add it to the user's state
-    # Be sure to include timestamp, fruit name, quantity, price, and total cost
-    # Make sure to initialize the purchases list if it doesn't exist
+    # TODO: Implement purchase recording with timestamps and pricing
     pass
 
-# TODO: Implement this new tool to retrieve purchase history
 @tool
 def get_purchase_history(user_id: str) -> List[Dict]:
     """Retrieves the purchase history for a user.
@@ -145,11 +138,14 @@ def get_purchase_history(user_id: str) -> List[Dict]:
     Returns:
         A list of the user's past purchases.
     """
-    # TODO: Return the user's purchase history
-    # Make sure to handle the case where there is no purchase history
-    pass
+    if user_id not in user_states:
+        user_states[user_id] = {"preferences": [], "purchases": []}
+    elif "purchases" not in user_states[user_id]:
+        user_states[user_id]["purchases"] = []
+    
+    return user_states[user_id]["purchases"]
 
-# TODO: Implement this new tool to provide a summary of purchases
+# TODO: Implement this tool for purchase analytics
 @tool
 def get_purchase_summary(user_id: str) -> Dict:
     """Calculates a summary of the user's purchase history.
@@ -161,117 +157,168 @@ def get_purchase_summary(user_id: str) -> Dict:
         A dictionary containing the total spent, number of transactions, 
         and most purchased fruit.
     """
-    # TODO: Calculate a summary of the user's purchase history
-    # The summary should include:
-    # - Total amount spent
-    # - Total number of transactions
-    # - Most frequently purchased fruit
-    # - Total number of fruits purchased
+    # TODO: Implement purchase summary calculation
     pass
 
-class FruitAdvisorAgent(ToolCallingAgent):
-    """
-    Agent for providing information about Colombian fruits,
-    remembering user preferences, and tracking purchase history.
-    """
+# Specialized agents with real responsibilities
+
+class FruitInfoAgent(ToolCallingAgent):
+    """Agent specialized in providing fruit information."""
+    
     def __init__(self, model: OpenAIServerModel):
         super().__init__(
-            tools=[
-                get_fruit_description,
-                add_fruit_preference,
-                get_user_preferences,
-                save_user_state,
-                purchase_fruit,  # New tool
-                get_purchase_history,  # New tool
-                get_purchase_summary,  # New tool
-            ],
+            tools=[get_fruit_description],
             model=model,
-            name="fruit_advisor_agent",
-            description="""
-            You are a helpful assistant specializing in Colombian fruits.
-            You help users learn about various Colombian fruits, remember their preferences,
-            and now you can also process fruit purchases and track purchase history.
-            
-            Use the tools available to you to:
-            - Retrieve information about fruits
-            - Manage user preferences
-            - Process purchases
-            - Provide purchase history and summaries
-            
-            Be enthusiastic and informative about Colombian fruits!
-            """,
+            name="fruit_info_agent",
+            description="Provides detailed information about Colombian fruits.",
         )
 
-class OrchestratorAgent(ToolCallingAgent):
-    """
-    Orchestrates the fruit advisor system with purchase tracking.
-    """
+class PreferenceAgent(ToolCallingAgent):
+    """Agent specialized in managing user preferences."""
+    
     def __init__(self, model: OpenAIServerModel):
         super().__init__(
-            tools=[],
+            tools=[add_fruit_preference, get_user_preferences, save_user_state],
             model=model,
-            name="orchestrator_agent",
+            name="preference_agent",
+            description="Manages user fruit preferences and saves user state.",
+        )
+
+class PurchaseAgent(ToolCallingAgent):
+    """Agent specialized in handling purchases and purchase history."""
+    
+    def __init__(self, model: OpenAIServerModel):
+        super().__init__(
+            tools=[purchase_fruit, get_purchase_history],  # TODO: Add get_purchase_summary
+            model=model,
+            name="purchase_agent",
+            description="Handles fruit purchases, purchase history, and purchase summaries.",
+        )
+
+class Orchestrator(ToolCallingAgent):
+    """Orchestrator that coordinates workflow between specialized agents."""
+    
+    def __init__(self, model: OpenAIServerModel):
+        self.model = model
+        
+        # Initialize specialized agents
+        self.fruit_info = FruitInfoAgent(model)
+        self.preferences = PreferenceAgent(model)
+        self.purchases = PurchaseAgent(model)
+
+        @tool
+        def get_fruit_info(fruit_name: str) -> str:
+            """Get information about a specific fruit.
+            
+            Args:
+                fruit_name: Name of the fruit to get information about
+                
+            Returns:
+                Detailed fruit information
+            """
+            return self.fruit_info.run(f"Tell me about {fruit_name}. Use get_fruit_description to provide detailed information.")
+
+        @tool
+        def manage_preferences(user_id: str, action: str, fruit_name: str = None) -> str:
+            """Manage user fruit preferences.
+            
+            Args:
+                user_id: ID of the user
+                action: Either 'add', 'get', or 'save'
+                fruit_name: Name of fruit (required for 'add' action)
+                
+            Returns:
+                Result of preference management operation
+            """
+            if action == "add" and fruit_name:
+                return self.preferences.run(f"Add {fruit_name} to preferences for user {user_id}")
+            elif action == "get":
+                return self.preferences.run(f"Get current preferences for user {user_id}")
+            elif action == "save":
+                return self.preferences.run(f"Save state for user {user_id}")
+            return "Invalid preference action"
+
+        @tool
+        def handle_purchase(user_id: str, action: str, fruit_name: str = None, quantity: int = None) -> str:
+            """Handle purchase operations including buying fruits and viewing history.
+            
+            Args:
+                user_id: ID of the user
+                action: Either 'buy', 'history', or 'summary'
+                fruit_name: Name of fruit (required for 'buy')
+                quantity: Quantity to purchase (required for 'buy')
+                
+            Returns:
+                Result of purchase operation
+            """
+            if action == "buy" and fruit_name and quantity:
+                return self.purchases.run(f"Record purchase for user {user_id}: {quantity} {fruit_name}")
+            elif action == "history":
+                return self.purchases.run(f"Get purchase history for user {user_id}")
+            # TODO: Add support for action == "summary"
+            return "Invalid purchase action"
+
+        super().__init__(
+            tools=[get_fruit_info, manage_preferences, handle_purchase],
+            model=model,
+            name="orchestrator",
             description="""
-            You are an orchestrator agent that manages the Colombian fruit advisory system.
-            Your role is to coordinate interactions between users and the fruit advisor agent,
-            ensuring that user state (preferences and purchase history) is properly 
-            managed and preserved across sessions.
+            Orchestrates the Colombian fruit market system by coordinating between
+            specialized agents for fruit information, preferences, and purchases.
+            
+            Workflow:
+            1. For fruit questions: Route to fruit info agent
+            2. For preference management: Route to preference agent  
+            3. For purchases: Route to purchase agent, then update preferences if new fruit
+            4. For purchase history/summaries: Route to purchase agent
+            5. Always save state after preference or purchase changes
             """,
         )
-        self.fruit_advisor = FruitAdvisorAgent(model)
 
     def process_user_message(self, user_id: str, message: str) -> str:
         """
-        Process a user message and return a response.
-        
-        Args:
-            user_id: The ID of the user.
-            message: The user's message.
-            
-        Returns:
-            A response from the fruit advisor agent.
+        Process user message through coordinated agent workflow.
         """
-        # Load any existing preferences
+        # Load current user context
         current_preferences = get_user_preferences(user_id)
+        purchase_history = get_purchase_history(user_id)
         
-        # TODO: Load any existing purchase history
-        # You'll need to use your get_purchase_history tool
-        
-        # Construct a prompt for the fruit advisor agent
-        prompt = f"""
+        context = f"""
         User ID: {user_id}
-        Current preferences: {', '.join(current_preferences) if current_preferences else 'None yet'}
+        Current preferences: {current_preferences}
+        Purchase history: {len(purchase_history)} previous transactions
         
-        The user says: "{message}"
+        User message: "{message}"
         
-        If the user is asking about a fruit, use get_fruit_description to provide information.
-        If the user expresses interest in a fruit, use add_fruit_preference to save it.
-        If the user wants to know their preferences, use get_user_preferences.
+        Coordinate the appropriate agents to handle this request:
+        - Use get_fruit_info for fruit information requests
+        - Use manage_preferences for adding/viewing preferences  
+        - Use handle_purchase for buying fruits, viewing purchase history, or getting purchase summaries
+        - Always save user state after preference or purchase changes
         
-        If the user wants to buy a fruit, use purchase_fruit to record the transaction.
-        If the user asks about their purchase history, use get_purchase_history.
-        If the user wants a summary of their purchases, use get_purchase_summary.
-        
-        Remember to save the user's state with save_user_state before ending the conversation.
-        
-        Respond in a friendly, informative way in both English and a bit of Spanish.
+        Follow this workflow:
+        1. If asking about fruit info → get fruit info
+        2. If expressing interest → get info first, then add to preferences
+        3. If wanting to buy → handle purchase, then add to preferences if new fruit
+        4. If asking for purchase history → handle_purchase with action 'history'
+        5. If asking for purchase summary → handle_purchase with action 'summary'
+        6. Always save state after changes
         """
         
-        return self.fruit_advisor.run(prompt)
+        return self.run(context)
 
 def run_demo():
     """
-    Runs the fruit advisor demo with purchase tracking.
+    Runs the fruit advisor demo with purchase tracking and real orchestration.
     """
     print("🍎 Colombian Fruit Market with Purchase Tracking 🍍")
     print("="*70)
     
-    orchestrator = OrchestratorAgent(model)
-    user_id = "user123"
+    orchestrator = Orchestrator(model)
+    user_id = "miercoles"
     
     print("\n--- First Session ---")
     
-    # Simulated user messages
     messages = [
         "Hi! What kind of fruits do you have?",
         "Tell me about lulo.",
@@ -282,26 +329,14 @@ def run_demo():
         "Thank you! I'll come back later."
     ]
     
-    # Process each message
-    for i, message in enumerate(messages):
+    for message in messages:
         print(f"\nUser: {message}")
         response = orchestrator.process_user_message(user_id, message)
         print(f"Agent: {response}")
-        time.sleep(0.5)  # Brief pause for readability
+        time.sleep(0.5)
     
-    # Simulate system restart/new session
-    print("\n" + "="*70)
-    print("--- Simulating a System Restart ---")
-    print("The system is restarting and will reload user state...")
-    print("="*70)
-    
-    # Create a new orchestrator (simulating a system restart)
-    new_orchestrator = OrchestratorAgent(model)
-    
-    # Continue the conversation in the new session
     print("\n--- Continuing in New Session ---")
     
-    # New set of messages
     new_messages = [
         "Hello again! I'd like to see my purchase history.",
         "Great! I'd like to buy 4 granadillas.",
@@ -309,15 +344,24 @@ def run_demo():
         "Thank you for your help!"
     ]
     
-    # Process each new message
-    for i, message in enumerate(new_messages):
+    for message in new_messages:
         print(f"\nUser: {message}")
-        response = new_orchestrator.process_user_message(user_id, message)
+        response = orchestrator.process_user_message(user_id, message)
         print(f"Agent: {response}")
-        time.sleep(0.5)  # Brief pause for readability
+        time.sleep(0.5)
     
-    # Final state check
-    # TODO: Add code to display final purchase history and summary
+    # Final state check - display purchase history and summary
+    purchase_history = get_purchase_history(user_id)
+    # TODO: Uncomment when get_purchase_summary is implemented
+    # purchase_summary = get_purchase_summary(user_id)
+    
+    print("\n" + "="*70)
+    print("Final Purchase History:")
+    for i, purchase in enumerate(purchase_history):
+        print(f"  {i+1}. [Purchase details will show when purchase_fruit is implemented]")
+    
+    print("\nPurchase Summary:")
+    print("  [Summary will show when get_purchase_summary is implemented]")
     
     print("\n" + "="*70)
     print("Demo complete! This demonstrates state persistence and transaction tracking across sessions.")
