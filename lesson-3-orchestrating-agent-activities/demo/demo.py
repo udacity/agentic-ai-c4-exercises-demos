@@ -234,8 +234,7 @@ class Orchestrator(ToolCallingAgent):
         self.inventory = InventoryAgent(model)
         self.park_management = ParkManagementAgent(model)
 
-    @tool
-    def handle_request(user_request: str) -> str:
+    def handle_request(self, user_request: str) -> str:
         """Handle a customer request and delegate to the appropriate agent.
 
         Args:
@@ -265,13 +264,13 @@ orchestrator = Orchestrator(model)
 print("\n--- Demo in Action! ---\n")
 
 request1 = "I want to book a skate session for 2024-07-28 at 10:00."
-response1 = orchestrator.run(f"""{request1}""")
+response1 = orchestrator.handle_request(f"""{request1}""")
 print(f"Response 1: {response1}")
 
 request2 = "Do you have any skateboards?"
-response2 = orchestrator.run(f"""{request2}""")
+response2 = orchestrator.handle_request(f"""{request2}""")
 print(f"Response 2: {response2}")
 
 request3 = "My helmet is broken!"
-response3 = orchestrator.run(f"""{request3}""")
+response3 = orchestrator.handle_request(f"""{request3}""")
 print(f"Response 3: {response3}")
