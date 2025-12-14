@@ -578,7 +578,7 @@ def search_quote_history(search_terms: List[str], limit: int = 5) -> List[Dict]:
     # Execute parameterized query
     with db_engine.connect() as conn:
         result = conn.execute(text(query), params)
-        return [dict(row) for row in result]
+        return [dict(row._mapping) for row in result]
 
 ########################
 ########################
@@ -624,14 +624,6 @@ def run_test_scenarios():
     except Exception as e:
         print(f"FATAL: Error loading test data: {e}")
         return
-
-    quote_requests_sample = pd.read_csv("quote_requests_sample.csv")
-
-    # Sort by date
-    quote_requests_sample["request_date"] = pd.to_datetime(
-        quote_requests_sample["request_date"]
-    )
-    quote_requests_sample = quote_requests_sample.sort_values("request_date")
 
     # Get initial state
     initial_date = quote_requests_sample["request_date"].min().strftime("%Y-%m-%d")
