@@ -1,8 +1,9 @@
-from typing import Dict, List
+from typing import Dict, List, Any, Optional
 import os
 import dotenv
 from smolagents import ToolCallingAgent, OpenAIServerModel, tool
-from datetime import datetime, timedelta
+import re
+import json
 
 dotenv.load_dotenv(dotenv_path="../.env")
 openai_api_key = os.getenv("UDACITY_OPENAI_API_KEY")
@@ -15,263 +16,248 @@ model = OpenAIServerModel(
 
 class BookingSystem:
     def __init__(self):
-        self.bookings = {}
-
-    def check_availability(self, date, time):
-        """Check if a session is available at a specific date and time."""
-        if date not in self.bookings:
-            return True
-        if time not in self.bookings[date]:
-            return True
-        return False
-
-    def add_booking(self, date, time, customer):
-        """Add a booking to the system."""
-        if date not in self.bookings:
-            self.bookings[date] = {}
+        self.bookings: Dict[str, Dict[str, str]] = {}
+    def check_availability(self, date: str, time: str) -> bool:
+        return not (date in self.bookings and time in self.bookings.get(date, {}))
+    def add_booking(self, date: str, time: str, customer: str) -> bool:
+        if date not in self.bookings: self.bookings[date] = {}
         self.bookings[date][time] = customer
         return True
-
-    def get_bookings(self, date):
-        """Get all bookings for a specific date."""
-        if date in self.bookings:
-            return self.bookings[date]
-        return {}
-
+    def get_bookings(self, date: str) -> Dict[str, str]:
+        return self.bookings.get(date, {})
 booking_system = BookingSystem()
 
 @tool
 def check_booking_availability(date: str, time: str) -> str:
-    """Check if a booking slot is available.
+    """
+    Check if a booking slot is available.
 
     Args:
-        date: The date of the booking (YYYY-MM-DD).
-        time: The time of the booking (HH:MM).
+        date (str): The date of the booking (YYYY-MM-DD).
+        time (str): The time of the booking (HH:MM).
 
     Returns:
-        A message indicating whether the booking slot is available.
+        str: A message indicating whether the booking slot is available.
     """
     if booking_system.check_availability(date, time):
-        return "The booking slot is available."
-    else:
-        return "The booking slot is not available."
+        return f"The booking slot for {date} at {time} is available."
+    return f"Sorry, the booking slot for {date} at {time} is not available."
 
 @tool
 def add_new_booking(date: str, time: str, customer: str) -> str:
-    """Add a new booking to the system.
+    """
+    Add a new booking to the system.
 
     Args:
-        date: The date of the booking (YYYY-MM-DD).
-        time: The time of the booking (HH:MM).
-        customer: The name of the customer making the booking.
+        date (str): The date of the booking (YYYY-MM-DD).
+        time (str): The time of the booking (HH:MM).
+        customer (str): The name of the customer making the booking.
 
     Returns:
-        A message confirming the booking.
+        str: A message confirming the booking or stating failure.
     """
-    if booking_system.add_booking(date, time, customer):
-        return f"Booking confirmed for {customer} on {date} at {time}."
-    else:
-        return "Failed to add booking."
+    if booking_system.check_availability(date, time):
+        if booking_system.add_booking(date, time, customer):
+            return f"Booking confirmed for {customer} on {date} at {time}."
+        return f"Failed to add booking for {customer} on {date} at {time} despite appearing available."
+    return f"Booking slot {date} at {time} is not available for {customer}."
 
 @tool
-def get_all_bookings(date: str) -> Dict:
-    """Get all bookings for a specific date.
+def get_all_bookings_for_date(date: str) -> str:
+    """
+    Get all bookings for a specific date. This tool should be used when a customer asks to see existing bookings for a date.
 
     Args:
-        date: The date to retrieve bookings for (YYYY-MM-DD).
+        date (str): The date to retrieve bookings for (YYYY-MM-DD).
 
     Returns:
-        A dictionary containing all bookings for the specified date.
+        str: String listing bookings or a 'no bookings found' message.
     """
     bookings = booking_system.get_bookings(date)
-    return bookings
+    if not bookings: return f"No bookings found for {date}."
+    return f"Bookings for {date}: {json.dumps(bookings)}"
 
 class Inventory:
     def __init__(self):
-        self.stock = {
-            "skateboard": 20,
-            "helmet": 30,
-            "wheels": 50
-        }
-
-    def check_stock(self, item: str) -> int:
-        """Check the stock level of an item.
-
-        Args:
-            item: The item to check the stock level for.
-
-        Returns:
-            The stock level of the item.
-        """
-        return self.stock.get(item, 0)
-
+        self.stock: Dict[str, int] = {"skateboard": 20, "helmet": 30, "wheels": 50}
+    def check_stock(self, item: str) -> int: return self.stock.get(item.lower(), 0)
     def sell_item(self, item: str, quantity: int) -> bool:
-        """Sell an item from the inventory.
-
-        Args:
-            item: The item to sell.
-            quantity: The quantity to sell.
-
-        Returns:
-            True if the item was sold successfully, False otherwise.
-        """
-        if self.stock.get(item, 0) >= quantity:
-            self.stock[item] -= quantity
-            return True
+        item_l = item.lower()
+        if self.stock.get(item_l, 0) >= quantity:
+            self.stock[item_l] -= quantity; return True
         return False
-
 inventory = Inventory()
 
 @tool
-def get_inventory_level(item: str) -> str:
-    """Check the stock level of an item.
+def get_item_inventory_level(item: str) -> str:
+    """
+    Check the stock level of a specific item. Use this for inventory inquiries.
 
     Args:
-        item: The item to check the stock level for.
+        item (str): The item to check the stock level for (e.g., "skateboard", "helmet", "wheels").
 
     Returns:
-        A message indicating the stock level of the item.
+        str: A message indicating the stock level of the item.
     """
-    stock_level = inventory.check_stock(item)
-    return f"The stock level for {item} is {stock_level}."
+    return f"Stock for {item}: {inventory.check_stock(item)}."
 
 @tool
-def sell_inventory_item(item: str, quantity: int) -> str:
-    """Sell an item from the inventory.
+def sell_item_from_inventory(item: str, quantity: int) -> str:
+    """
+    Sell a specified quantity of an item from the inventory. Use this when a customer wants to purchase an item.
 
     Args:
-        item: The item to sell.
-        quantity: The quantity to sell.
+        item (str): The item to sell.
+        quantity (int): The quantity to sell.
 
     Returns:
-        A message indicating whether the item was sold successfully.
+        str: A message indicating whether the item was sold successfully and the new stock level.
     """
+    stock_before = inventory.check_stock(item)
     if inventory.sell_item(item, quantity):
-        return f"{quantity} of {item} sold successfully."
-    else:
-        return f"Not enough {item} in stock."
+        return f"Sold {quantity} of {item}. Stock was {stock_before}, now {inventory.check_stock(item)}."
+    return f"Not enough {item} in stock (available: {stock_before}). Sale failed."
+
+@tool
+def submit_request_diagnosis(chosen_category: str, ) -> str:
+    """
+    Submits the diagnosed category of a customer's request. This tool is called by the CustomerSupportAgent's LLM.
+
+    Args:
+        chosen_category (str): The category determined by the LLM (e.g., "Shop - Skateboard Inquiry", "Park - Session Booking Inquiry", etc.).
+    
+    Returns:
+        str: The chosen_category.
+    """
+    return chosen_category
 
 class CustomerSupportAgent(ToolCallingAgent):
-    """Agent for handling customer support requests."""
-
-    def __init__(self, model: OpenAIServerModel):
+    def __init__(self, model_to_use: OpenAIServerModel):
         super().__init__(
-            tools=[],
-            model=model,
-            name="customer_support_agent",
-            description="Agent for handling customer support requests. Diagnose the issue and provide an initial response.",
+            tools=[submit_request_diagnosis],
+            model=model_to_use,
+            name="customer_support_diagnoser",
+            description="Agent that analyzes a customer's request and categorizes its primary intent using the 'submit_request_diagnosis' tool."
         )
+        self.possible_categories = [
+            "Shop - Skateboard Inquiry", 
+            "Park - Session Booking Inquiry", 
+            "Park - List Bookings Inquiry", 
+            "Shop - Gear repair or replacement Inquiry", 
+            "General Inquiry or Unknown"
+        ]
 
-    def diagnose_issue(self, request: str) -> str:
-        """Diagnose the customer's issue.
+    def get_llm_diagnosis(self, user_request: str) -> str:
+        self.memory.steps = []
+        prompt = f"""
+        A customer stated: "{user_request}"
+        Your task is to understand the customer's primary intent and categorize this request.
+        Choose exactly ONE category from the following list that best fits the request:
+        {json.dumps(self.possible_categories)}
 
-        Args:
-            request: The customer's request.
-
-        Returns:
-            A diagnosis of the issue.
+        After determining the most appropriate category, you MUST call the 'submit_request_diagnosis' tool.
+        Provide your chosen category as the 'chosen_category' argument,
+        and the original user request as the 'original_request_for_context' argument.
+        Your final text after the tool call should be simple, like "Diagnosis submitted."
         """
-        request_lower = request.lower()
-        if "board" in request_lower or "skateboard" in request_lower:
-            return "Shop - Skateboard Inquiry"
-        elif "rent" in request_lower or "session" in request_lower or "booking" in request_lower:
-            return "Park - Session Booking Inquiry"
-        elif "broken" in request_lower or "damaged" in request_lower:
-            return "Shop - Gear repair or replacement Inquiry"
-        else:
-            return "Unknown - needs escalation"
+        _ = self.run(prompt) 
 
-    def provide_initial_response(self, diagnosis: str) -> str:
-        """Provide an initial response to the customer.
-
-        Args:
-            diagnosis: The diagnosis of the issue.
-
-        Returns:
-            An initial response to the customer.
-        """
-        responses = {
-            "Shop - Skateboard Inquiry": "We have various boards! What kind are you looking for?",
-            "Park - Session Booking Inquiry": "Great, what date and time are you looking for?",
-            "Shop - Gear repair or replacement Inquiry": "Please describe the damage. We can repair or replace depending on the damage.",
-            "Unknown - needs escalation": "Please wait while we connect you with the relevant agent."
-        }
-        return responses.get(diagnosis, "I am sorry, I don't understand. Please rephrase your request.")
-
-class InventoryAgent(ToolCallingAgent):
-    """Agent for managing inventory."""
-
-    def __init__(self, model: OpenAIServerModel):
-        super().__init__(
-            tools=[get_inventory_level, sell_inventory_item],
-            model=model,
-            name="inventory_agent",
-            description="Agent for managing inventory. Check stock levels and sell items.",
-        )
-
-class ParkManagementAgent(ToolCallingAgent):
-    """Agent for managing park bookings."""
-
-    def __init__(self, model: OpenAIServerModel):
-        super().__init__(
-            tools=[check_booking_availability, add_new_booking, get_all_bookings],
-            model=model,
-            name="park_management_agent",
-            description="Agent for managing park bookings. Check availability and add bookings.",
-        )
+        diagnosis_from_llm = "General Inquiry or Unknown" 
+        for step in self.memory.steps:
+            if hasattr(step, 'tool_calls') and step.tool_calls:
+                for tc in step.tool_calls:
+                    if tc.name == 'submit_request_diagnosis':
+                        if hasattr(step, 'observations') and step.observations is not None:
+                            diagnosis_from_llm = str(step.observations)
+                        break
+            if diagnosis_from_llm != "General Inquiry or Unknown" and diagnosis_from_llm in self.possible_categories:
+                break
+        
+        if diagnosis_from_llm not in self.possible_categories:
+            return "General Inquiry or Unknown"
+        return diagnosis_from_llm
 
 class Orchestrator(ToolCallingAgent):
-    """Orchestrator agent for managing the skate park and shop."""
-
-    def __init__(self, model: OpenAIServerModel):
+    def __init__(self, model_to_use: OpenAIServerModel):
+        self.customer_support_agent = CustomerSupportAgent(model_to_use)
+        
+        orchestrator_tools = [
+            check_booking_availability, 
+            add_new_booking, 
+            get_all_bookings_for_date,
+            get_item_inventory_level,
+            sell_item_from_inventory
+        ]
         super().__init__(
-            tools=[],
-            model=model,
+            tools=orchestrator_tools,
+            model=model_to_use,
             name="orchestrator",
-            description="Orchestrator agent for managing the skate park and shop. Handles customer requests and delegates to other agents.",
+            description="Orchestrator that handles customer requests by first diagnosing them and then using appropriate tools to fulfill the request or provide information."
         )
-        self.customer_support = CustomerSupportAgent(model)
-        self.inventory = InventoryAgent(model)
-        self.park_management = ParkManagementAgent(model)
 
-    @tool
-    def handle_request(user_request: str) -> str:
-        """Handle a customer request and delegate to the appropriate agent.
+    def _get_final_answer_from_memory(self, agent_memory_steps: List[Any]) -> str:
+        for step in reversed(agent_memory_steps):
+            if hasattr(step, 'tool_calls') and step.tool_calls:
+                for tc in step.tool_calls:
+                    if tc.name == 'final_answer':
+                        if hasattr(step, 'action_output') and step.action_output is not None:
+                            return str(step.action_output)
+                        elif hasattr(tc, 'arguments') and tc.arguments.get('answer') is not None:
+                             return str(tc.arguments.get('answer'))
+            if hasattr(step, 'observations') and step.observations is not None and \
+               (not (hasattr(step, 'tool_calls') and step.tool_calls and step.tool_calls[0].name == 'final_answer')):
+                return str(step.observations)
+        return "Orchestrator: Could not determine a final response from the execution steps."
 
-        Args:
-            user_request: The customer's request.
+    def process_customer_request(self, user_request: str) -> str:
+        print(f"\nOrchestrator received request: '{user_request}'")
+        
+        diagnosis = self.customer_support_agent.get_llm_diagnosis(user_request)
+        print(f"LLM Diagnosis from CustomerSupportAgent: '{diagnosis}'")
 
-        Returns:
-            A response to the customer.
+        self.memory.steps = []
+        
+        orchestrator_prompt = f"""
+        You are the main Orchestrator for a skate park and shop.
+        A customer's request is: "{user_request}"
+        The request has been diagnosed by our support agent with the category: "{diagnosis}".
+
+        Based on the user request and this diagnosis, decide which of your available tools to use to best help the customer.
+        Your available tools are:
+        - 'check_booking_availability': Use for "{self.customer_support_agent.possible_categories[1]}" or "{self.customer_support_agent.possible_categories[2]}" if checking a specific slot.
+        - 'add_new_booking': Use for "{self.customer_support_agent.possible_categories[1]}" if all details (date, time, customer name) are clear or can be inferred.
+        - 'get_all_bookings_for_date': Use for "{self.customer_support_agent.possible_categories[2]}" if a date is provided.
+        - 'get_item_inventory_level': Use for "{self.customer_support_agent.possible_categories[0]}" to check stock (e.g., for 'skateboard', 'helmet', or 'wheels').
+        - 'sell_item_from_inventory': Use for "{self.customer_support_agent.possible_categories[0]}" if the customer wants to buy a specific item and quantity.
+        
+        If the diagnosis is "{self.customer_support_agent.possible_categories[3]}" (Gear repair) or "{self.customer_support_agent.possible_categories[4]}" (Unknown/General),
+        or if the necessary information for other tools is missing from the user_request (e.g., no item for inventory check, no date/time for booking),
+        then you should directly provide a helpful response or ask for clarification using the 'final_answer' tool.
+        For gear repair, a standard response is: "Regarding your gear concern: Please bring the item to our shop for a detailed assessment, or call us to discuss repair or replacement options."
+        For unknown inquiries, a standard response is: "I'm not entirely sure how to help with that. Could you please rephrase or provide more details?"
+
+        Extract necessary arguments for the tools (like date, time, item, customer name) from the original user_request: "{user_request}".
+        If a tool is used, its output will be an observation. You might need to call tools sequentially (e.g., check availability then book).
+        Conclude by calling the 'final_answer' tool with your complete response to the customer.
         """
-        diagnosis = self.customer_support.diagnose_issue(user_request)
-        initial_response = self.customer_support.provide_initial_response(diagnosis)
-
-        if "Shop" in diagnosis:
-            if "Skateboard" in diagnosis:
-                return self.inventory.run(f"""Check the stock level of skateboards and respond to the customer: {initial_response}""")
-            elif "Gear" in diagnosis:
-                return f"Delegate to repair services. {initial_response}"
-            else:
-                return "Cannot assist with your request directly. Please rephrase your request."
-
-        elif "Park" in diagnosis:
-            return self.park_management.run(f"""Check booking availability and respond to the customer: {initial_response}""")
-        else:
-            return "Cannot assist with your request directly. Please rephrase your request."
+        _ = self.run(orchestrator_prompt)
+        return self._get_final_answer_from_memory(self.memory.steps)
 
 orchestrator = Orchestrator(model)
 
 print("\n--- Demo in Action! ---\n")
 
-request1 = "I want to book a skate session for 2024-07-28 at 10:00."
-response1 = orchestrator.run(f"""{request1}""")
-print(f"Response 1: {response1}")
+requests = [
+    "I want to book a skate session for 2024-08-15 at 14:00 for Alice.",
+    "Can I rent a board for tomorrow?",
+    "Do you have any skateboards in stock?",
+    "My wheels are broken and I need a replacement.",
+    "I'd like to book a session.",
+    "Book a session for Bob on 2024-08-15 at 14:00.",
+    "What bookings do you have for 2024-08-15?"
+]
 
-request2 = "Do you have any skateboards?"
-response2 = orchestrator.run(f"""{request2}""")
-print(f"Response 2: {response2}")
-
-request3 = "My helmet is broken!"
-response3 = orchestrator.run(f"""{request3}""")
-print(f"Response 3: {response3}")
+for i, req in enumerate(requests):
+    print(f"\n--- Request {i+1}: '{req}' ---")
+    response = orchestrator.process_customer_request(req)
+    print(f"Orchestrator's Final Response to Customer: {response}")

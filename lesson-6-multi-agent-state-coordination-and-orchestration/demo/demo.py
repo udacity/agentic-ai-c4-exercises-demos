@@ -17,9 +17,7 @@ from smolagents import (
 # --- 🍝 Italian Pasta Factory: Multi-Agent State Coordination Demo ---
 
 print("\n--- 🍝 Welcome to the Italian Pasta Factory Simulation! 🇮🇹 ---")
-print("\nDid you know Italy is the world's largest pasta producer?")
-print("They produce over 3 million tons of pasta annually, requiring sophisticated coordination.")
-print("This demo shows how multiple specialized agents share state and work together.")
+print("This demo shows how multiple specialized agents share state and work together to aid pasta manufacturers.")
 print("We'll focus on order processing, inventory management, and production scheduling.")
 
 # --- 1. Shared State Definitions ---
@@ -176,15 +174,6 @@ class OrderProcessorAgent(ToolCallingAgent):
             Be friendly, precise, and make sure to identify the pasta shape and quantity correctly.
             """,
         )
-    
-    def run(self, message):
-        """Override run method to handle API errors gracefully"""
-        try:
-            return super().run(message)
-        except Exception as e:
-            print(f"Error in Order Processor Agent: {str(e)}")
-            # Provide a minimal fallback response with the necessary info
-            return "The customer wants 2kg of spaghetti. Order ID: ORD-0001"
 
 class InventoryManagerAgent(ToolCallingAgent):
     """Agent responsible for managing ingredients inventory."""
@@ -235,17 +224,95 @@ class ProductionManagerAgent(ToolCallingAgent):
 
 # --- 4. Orchestrator That Coordinates Agents ---
 
-class PastaFactoryOrchestrator:
-    """Coordinates the activities of all agents in the pasta factory."""
+class Orchestrator(ToolCallingAgent):
+    """Orchestrator that coordinates the activities of all agents in the pasta factory."""
     
     def __init__(self, model: OpenAIServerModel):
+        self.model = model
+        
+        # Initialize specialized agents
         self.order_processor = OrderProcessorAgent(model)
         self.inventory_manager = InventoryManagerAgent(model)
         self.production_manager = ProductionManagerAgent(model)
-        self.model = model
+
+        @tool
+        def process_order_info(customer_message: str) -> str:
+            """Process customer order information to extract details.
+            
+            Args:
+                customer_message: The customer's order request
+                
+            Returns:
+                Processed order information with pasta shape and quantity
+            """
+            return self.order_processor.run(f"""
+            The customer says: "{customer_message}"
+            
+            First, identify:
+            1. What pasta shape they want
+            2. How much they want (in kg)
+            
+            Then check if we make that pasta shape using check_pasta_recipe.
+            Generate an order ID using generate_order_id.
+            """)
+
+        @tool
+        def manage_inventory(order_details: str) -> str:
+            """Check and manage inventory for an order.
+            
+            Args:
+                order_details: Details about the order including pasta shape and quantity
+                
+            Returns:
+                Inventory management result
+            """
+            return self.inventory_manager.run(f"""
+            Order details: {order_details}
+            
+            Check if we have enough ingredients for this order:
+            1. Use check_pasta_recipe to get the ingredient requirements
+            2. Use check_inventory to verify we have sufficient ingredients
+            3. If we have enough, use update_inventory to reserve the ingredients
+            """)
+
+        @tool
+        def schedule_production(order_info: str) -> str:
+            """Schedule production for an order.
+            
+            Args:
+                order_info: Information about the order to schedule
+                
+            Returns:
+                Production scheduling result with delivery date
+            """
+            return self.production_manager.run(f"""
+            Order information: {order_info}
+            
+            Schedule this order for production:
+            1. Add the order to the production queue using add_to_production_queue
+            2. Calculate delivery date using calculate_delivery_date
+            3. Provide the customer with production status and delivery estimate
+            """)
+
+        super().__init__(
+            tools=[process_order_info, manage_inventory, schedule_production],
+            model=model,
+            name="orchestrator",
+            description="""
+            You are the orchestrator for a pasta factory system.
+            You coordinate between the order processor, inventory manager, and production manager.
+            
+            For customer orders, follow this workflow:
+            1. Use process_order_info to understand what the customer wants
+            2. Use manage_inventory to check and reserve ingredients
+            3. Use schedule_production to add to queue and get delivery date
+            
+            Always provide clear responses to customers about their order status.
+            """,
+        )
     
     def process_customer_order(self, customer_message: str) -> str:
-        """Process a customer order through the entire workflow.
+        """Process a customer order through the coordinated agent workflow.
         
         Args:
             customer_message: The customer's order request
@@ -256,119 +323,20 @@ class PastaFactoryOrchestrator:
         try:
             print("\n--- Processing New Order ---")
             
-            # Step 1: Interpret the customer order
-            print("🔍 Order Processor analyzing request...")
-            order_analysis = self.order_processor.run(f"""
-            The customer says: "{customer_message}"
+            # Use the orchestrator's own coordination workflow
+            context = f"""
+            Customer request: "{customer_message}"
             
-            First, identify:
-            1. What pasta shape they want
-            2. How much they want (in kg)
+            Process this order by coordinating with our specialized agents:
+            1. First process the order information to understand what they want
+            2. Check and manage inventory to ensure we can fulfill it
+            3. Schedule production and provide delivery information
             
-            Then check if we make that pasta shape using check_pasta_recipe.
-            Generate an order ID using generate_order_id.
-            """)
+            If at any step we cannot fulfill the order, explain why to the customer.
+            """
             
-            print(f"Order processor response: {order_analysis}")
+            return self.run(context)
             
-            # Extract order details from the response using more flexible parsing
-            try:
-                # Direct lookup for pasta shapes in our catalog
-                pasta_shape = None
-                for shape in pasta_shapes.keys():
-                    if shape.lower() in order_analysis.lower():
-                        pasta_shape = shape
-                        break
-                
-                # Find quantity using regex for numbers followed by kg
-                quantity = None
-                quantity_match = re.search(r'(\d+(?:\.\d+)?)\s*kg', order_analysis.lower())
-                if quantity_match:
-                    quantity = float(quantity_match.group(1))
-                else:
-                    # Alternative: look for digits after words like "wants" or "order"
-                    quantity_match = re.search(r'wants\s+(\d+(?:\.\d+)?)', order_analysis.lower())
-                    if quantity_match:
-                        quantity = float(quantity_match.group(1))
-                
-                # Find order ID
-                order_id = None
-                id_match = re.search(r'(ORD-\d+)', order_analysis)
-                if id_match:
-                    order_id = id_match.group(1)
-                
-                # Fallbacks for missing information
-                if not pasta_shape:
-                    raise ValueError("Could not identify pasta shape")
-                
-                if not quantity:
-                    # Default to 2kg if we can't find it
-                    quantity = 2.0
-                
-                if not order_id:
-                    # Generate a new ID if we can't find it
-                    order_id = generate_order_id()
-                
-                # Store in factory state
-                factory_state["current_orders"][order_id] = {
-                    "pasta_shape": pasta_shape,
-                    "quantity": quantity,
-                    "status": "new"
-                }
-                
-                print(f"📋 Order details: {order_id} for {quantity}kg of {pasta_shape}")
-            except (IndexError, ValueError) as e:
-                print(f"Error parsing order: {str(e)}")
-                return "I couldn't understand your order. Please specify the pasta shape and quantity clearly."
-            
-            # Step 2: Check if pasta shape exists
-            recipe = check_pasta_recipe(pasta_shape)
-            if not recipe:
-                return f"I'm sorry, we don't make {pasta_shape}. We offer: {', '.join(pasta_shapes.keys())}"
-            
-            # Step 3: Check inventory
-            print("🧮 Inventory Manager checking ingredients...")
-            
-            # Check if we have enough ingredients
-            can_fulfill = True
-            missing_ingredients = []
-            for ingredient, amount_per_kg in recipe.items():
-                total_needed = amount_per_kg * quantity
-                available = check_inventory(ingredient)
-                
-                if available < total_needed:
-                    can_fulfill = False
-                    missing_ingredients.append(ingredient)
-            
-            if not can_fulfill:
-                missing_str = ", ".join(missing_ingredients)
-                return f"I'm sorry, we can't fulfill your order for {quantity}kg of {pasta_shape} due to insufficient {missing_str}."
-            
-            # Step 4: Reserve ingredients
-            print("📦 Reserving ingredients...")
-            for ingredient, amount_per_kg in recipe.items():
-                total_needed = amount_per_kg * quantity
-                update_inventory(ingredient, -total_needed)
-            
-            # Step 5: Add to production queue
-            print("🏭 Adding to production schedule...")
-            queue_message = add_to_production_queue(order_id, pasta_shape, quantity)
-            
-            # Step 6: Calculate delivery date
-            delivery_date = calculate_delivery_date(pasta_shape, quantity)
-            
-            # Update order status
-            factory_state["current_orders"][order_id]["status"] = "scheduled"
-            factory_state["current_orders"][order_id]["delivery_date"] = delivery_date
-            
-            # Step 7: Return confirmation to customer
-            return f"""
-Thank you for your order of {quantity}kg of {pasta_shape}!
-Order ID: {order_id}
-Estimated delivery date: {delivery_date}
-
-Your pasta is being crafted with care by our artisans. Grazie!
-"""
         except Exception as e:
             print(f"Error processing order: {str(e)}")
             print(traceback.format_exc())
@@ -390,7 +358,7 @@ def run_simulation():
         )
         
         # Create the orchestrator
-        factory = PastaFactoryOrchestrator(model)
+        factory = Orchestrator(model)
         
         # Print initial state
         print("\n--- Initial Factory State ---")
