@@ -174,7 +174,13 @@ def create_diagram(title, nodes, edges, node_labels=None, node_types=None, edge_
 
     plt.axis("off")
     plt.tight_layout()
-    plt.show()
+    
+    # Save the diagram as an image file
+    filename = title.replace(' ', '_').replace(':', '') + '.png'
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    print(f"Diagram saved as: {filename}")
+    plt.close()
+
 
 
 """ 
