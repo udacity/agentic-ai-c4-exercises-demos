@@ -133,17 +133,20 @@ event_system = EventSystem()
 
 class MaintenanceLog:
     def __init__(self):
-        self.log_entries: List[Dict[str,str]] = []
+        self.log_entries: List[Dict[str,Any]] = []
         self.next_id = 1
     def add_entry(self, area: str, issue: str, reported_by: str) -> int:
         entry_id = self.next_id
         self.log_entries.append({"id": entry_id, "area": area, "issue": issue, "reported_by": reported_by, "status": "reported"})
         self.next_id +=1
         return entry_id
-    def view_log(self) -> List[Dict[str,str]]:
+    def view_log(self) -> List[Dict[str,Any]]:
         return self.log_entries
 maintenance_log = MaintenanceLog()
 
+# ========================================
+# STUDENT TASK 1: Implement create_new_event tool
+# ========================================
 @tool
 def create_new_event(event_name: str, date: str, description: str) -> str:
     """
@@ -158,8 +161,16 @@ def create_new_event(event_name: str, date: str, description: str) -> str:
         str: A confirmation message.
     """
     # TODO: Implement this tool using event_system.add_event
+    # Steps:
+    # 1. Call event_system.add_event(event_name, date, description)
+    # 2. If successful (returns True), return a confirmation message
+    # 3. If it fails (unlikely with current implementation), return failure message
+    # Example: return f"Event '{event_name}' on {date} successfully created: {description}."
     pass
 
+# ========================================
+# STUDENT TASK 2: Implement list_upcoming_events tool
+# ========================================
 @tool
 def list_upcoming_events() -> str:
     """
@@ -169,8 +180,15 @@ def list_upcoming_events() -> str:
         str: A string representation of the list of events, or a message if no events are scheduled.
     """
     # TODO: Implement this tool using event_system.list_events
+    # Steps:
+    # 1. Call event_system.list_events() to get all events
+    # 2. If the list is empty, return "No upcoming events are currently scheduled."
+    # 3. Otherwise, return the events as JSON: f"Upcoming events: {json.dumps(events)}"
     pass
 
+# ========================================
+# STUDENT TASK 3: Implement log_maintenance_request tool
+# ========================================
 @tool
 def log_maintenance_request(area: str, issue_description: str, reported_by: str) -> str:
     """
@@ -185,8 +203,16 @@ def log_maintenance_request(area: str, issue_description: str, reported_by: str)
         str: A confirmation message with the request ID.
     """
     # TODO: Implement this tool using maintenance_log.add_entry
+    # Steps:
+    # 1. Call maintenance_log.add_entry(area, issue_description, reported_by)
+    # 2. This returns a request_id (int)
+    # 3. Return a confirmation message that includes all the information
+    # Example: f"Maintenance request logged for '{area}' (Issue: '{issue_description}', Reported by: {reported_by}). Request ID: {request_id}."
     pass
 
+# ========================================
+# STUDENT TASK 4: Implement view_maintenance_log tool
+# ========================================
 @tool
 def view_maintenance_log() -> str:
     """
@@ -196,6 +222,10 @@ def view_maintenance_log() -> str:
         str: A string representation of the maintenance log, or a message if the log is empty.
     """
     # TODO: Implement this tool using maintenance_log.view_log
+    # Steps:
+    # 1. Call maintenance_log.view_log() to get all log entries
+    # 2. If the list is empty, return "The maintenance log is currently empty."
+    # 3. Otherwise, return the log as JSON: f"Maintenance Log: {json.dumps(log)}"
     pass
 
 @tool
@@ -296,26 +326,40 @@ class Orchestrator(ToolCallingAgent):
 
         self.memory.steps = []
         
-        # TODO: Learner needs to expand this prompt to handle the new diagnosis categories
-        # and guide the LLM to use the new tools for events and maintenance.
-        orchestrator_prompt = f"""
-        You are the main Orchestrator.
-        Customer request: "{user_request}"
-        Diagnosis: "{diagnosis}".
-        Available tools: {json.dumps([t.name for t in self.tools])}.
-
-        Based on the request and diagnosis, decide which tool to use.
-        - For "{self.customer_support_agent.possible_categories[0]}" (Skateboard Inquiry), use 'get_item_inventory_level' or 'sell_item_from_inventory'.
-        - For "{self.customer_support_agent.possible_categories[1]}" (Session Booking), use 'check_booking_availability' then 'add_new_booking'.
-        - For "{self.customer_support_agent.possible_categories[2]}" (List Bookings), use 'get_all_bookings_for_date'.
-        - For "{self.customer_support_agent.possible_categories[4]}" (Event Inquiry), use 'list_upcoming_events' or 'create_new_event' if details are provided for a new event.
-        - For "{self.customer_support_agent.possible_categories[5]}" (Maintenance Request), use 'log_maintenance_request' or 'view_maintenance_log'.
+        # ========================================
+        # STUDENT TASK 5: Expand the orchestrator prompt
+        # ========================================
+        # The prompt below handles categories 0-3 and 6
+        # You need to add handling for categories 4 and 5 in the marked section
         
-        If diagnosis is "{self.customer_support_agent.possible_categories[3]}" (Gear repair), respond with 'final_answer': "Regarding your gear: please bring it to the shop for assessment."
-        If diagnosis is "{self.customer_support_agent.possible_categories[6]}" (Unknown/General) or info is missing for tools, use 'final_answer' to ask for clarification or state inability to help.
+        orchestrator_prompt = f"""
+        You are the main Orchestrator for a skate park, shop, events, and maintenance.
+        A customer's request is: "{user_request}"
+        The request has been diagnosed by our support agent with the category: "{diagnosis}".
 
-        Extract arguments for tools from "{user_request}".
-        Call tools sequentially if needed. Conclude with 'final_answer'.
+        Based on the user request and this diagnosis, decide which of your available tools to use to best help the customer.
+        
+        Consider the diagnosis:
+        - If "{diagnosis}" is "{self.customer_support_agent.possible_categories[0]}" (Skateboard Inquiry), you might use 'get_item_inventory_level' for items like 'skateboard', 'helmet', or 'wheels', or 'sell_item_from_inventory' if purchase details are clear.
+        - If "{diagnosis}" is "{self.customer_support_agent.possible_categories[1]}" (Session Booking), attempt to extract date, time, and customer name from "{user_request}". If all details are present, you might first 'check_booking_availability', then 'add_new_booking'. If details are missing, use 'final_answer' to ask for them.
+        - If "{diagnosis}" is "{self.customer_support_agent.possible_categories[2]}" (List Bookings), attempt to extract a date from "{user_request}". If a date is present, use 'get_all_bookings_for_date'. If no date, use 'final_answer' to ask for it.
+        
+        TODO: Add two more conditional blocks below following the same pattern:
+        
+        - If "{diagnosis}" is "{self.customer_support_agent.possible_categories[4]}" (Event Inquiry):
+            [YOUR GUIDANCE HERE - Guide the LLM on when to use 'list_upcoming_events' vs 'create_new_event']
+            [Consider what information is needed for each tool]
+        
+        - If "{diagnosis}" is "{self.customer_support_agent.possible_categories[5]}" (Maintenance Request):
+            [YOUR GUIDANCE HERE - Guide the LLM on when to use 'log_maintenance_request' vs 'view_maintenance_log']
+            [Consider what arguments need to be extracted from the user request]
+        
+        If the diagnosis is "{self.customer_support_agent.possible_categories[3]}" (Gear repair), provide a standard helpful response using the 'final_answer' tool: "Regarding your gear concern: Please bring the item to our shop for a detailed assessment, or call us to discuss repair or replacement options."
+        If the diagnosis is "{self.customer_support_agent.possible_categories[6]}" (Unknown/General), or if necessary information for other tools is missing and you need to ask for clarification, use the 'final_answer' tool with an appropriate message like: "I'm not entirely sure how to help with that. Could you please rephrase or provide more details?"
+
+        Extract necessary arguments for any tool you call (like date, time, item, customer name, event_name, description, area, issue_description, reported_by) directly from the original user_request: "{user_request}".
+        If a tool is used, its output (your observation) will be provided to you. You might need to call tools sequentially.
+        Conclude by calling the 'final_answer' tool with your complete response to the customer.
         """
         _ = self.run(orchestrator_prompt)
         return self._get_final_answer_from_orchestrator_memory()
@@ -329,7 +373,7 @@ requests = [
     "Do you have any 'pro_model_deck' skateboards in stock?",
     "My helmet is cracked, can you fix it?",
     "What events are happening next month?",
-    "The main ramp has a loose panel, someone could get hurt!",
+    "The main ramp has a loose panel, someone could get hurt! My name is Sarah.",
     "I'd like to schedule a 'Beginner Skate Workshop' on 2024-09-15, it's for all ages.",
     "Show me the maintenance log." 
 ]
