@@ -1,4 +1,5 @@
 import os
+from unittest import case
 from dotenv import load_dotenv
 from smolagents import ToolCallingAgent, OpenAIServerModel, tool
 from typing import Dict, Any, List, Optional
@@ -18,7 +19,7 @@ DISTRIBUTION_HISTORY: Dict[str, List[Dict[str, Any]]] = {}
 
 @tool
 def check_history(penguin_name: str) -> Dict[str, Any]:
-    """
+    """     
     Checks recent resource distribution history for a penguin.
 
     Args:
@@ -70,11 +71,14 @@ def find_food(method: str) -> int:
     # - If method is "foraging" (case-insensitive), return a random amount between 0-3
     # - If method is "fishing" (case-insensitive), return a random amount between 2-7
     # - Return 0 for any other method
-    
-    food_found = 0
-    
-    # YOUR CODE HERE
-    
+    match method.lower():
+        case "foraging":
+            food_found = random.randint(0, 3)
+        case "fishing":
+            food_found = random.randint(2, 7)
+        case _:
+            food_found = 0
+
     return food_found
 
 
@@ -206,11 +210,14 @@ class PenguinAgent(ToolCallingAgent):
         # - Encourage smart decision-making based on current state
         
         Choose ONE action:
-        1. FIND FOOD YOURSELF: Use 'find_food' tool with method="fishing" or method="foraging"
-        2. REQUEST FOOD: Respond with text asking for food
-        3. REQUEST TOY: Respond with text asking for a toy
+        1. FIND FOOD YOURSELF: Use 'find_food' tool with method="fishing" or method="foraging". Other values will return 0 food.
+        2. REQUEST FOOD: Respond with text asking for food. Examples: "I need food", "I'm hungry", "Can I have some food?"
+        3. REQUEST TOY: Respond with text asking for a toy. Examples: "I need a toy", "Can I have a toy?", "I'm bored without a toy"
         
-        YOUR ADDITIONAL GUIDANCE HERE
+        If the penguin already has a toy, it should not request another toy.
+        If the penguin has very low food (e.g., 0-1), it should consider using 'find_food' or requesting food.
+        If the penguin has moderate food (e.g., 2-3), it might try finding food or asking for a toy if it doesn't have one.
+        If the penguin has enough food (e.g., 4+), it might just ask for a toy if it doesn't have one, or do nothing if it's content.
         """
         
         final_llm_text_output = self.run(prompt)

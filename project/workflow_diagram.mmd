@@ -1,0 +1,40 @@
+sequenceDiagram
+    participant C as Customer
+    participant O as Orchestrator
+    participant I as Inventory
+    participant Q as Quote
+    participant S as Sales
+    participant DB as Database
+
+    C->>O: Send request (inquiry/quote/order)
+    O->>O: Analyze request type
+
+    alt Inventory Inquiry
+        O->>I: Check stock?
+        I->>DB: get_stock_level()
+        DB->>I: Stock data
+        I->>O: Return stock info
+    else Quote Request
+        O->>Q: Generate quote?
+        Q->>DB: search_quote_history()
+        DB->>Q: Historical quotes
+        Q->>Q: Apply pricing logic
+        Q->>O: Quote with explanation
+    else Sales Order
+        O->>I: Check inventory?
+        I->>DB: get_all_inventory()
+        DB->>I: Current stock
+        I->>O: Stock availability
+
+        alt Stock Available
+            O->>S: Process order
+            S->>I: Get current stock
+            I->>DB: get_stock_level()
+            S->>DB: create_transaction()
+            S->>O: Order confirmed
+        else Insufficient Stock
+            O->>O: Generate rejection
+        end
+    end
+
+    O->>C: Return response

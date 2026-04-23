@@ -4,6 +4,7 @@ import dotenv
 import random
 import time
 from smolagents import ToolCallingAgent, OpenAIServerModel, tool
+from smolagents.models import ChatMessage
 import json
 
 dotenv.load_dotenv(dotenv_path="../.env")
@@ -105,7 +106,17 @@ def analyze_request_urgency(request: str) -> str:
     Returns:
         str: "urgent" if the request contains urgency indicators, "normal" otherwise.
     """
-    pass
+    prompt = (
+        f'Analyze whether the following customer request is urgent.\n'
+        f'Request: "{request}"\n'
+        f'Urgency indicators include: "urgent", "emergency", "immediately", "asap", '
+        f'"right away", "right now", "紧急", "急需", "立即", "马上", "立刻", "赶快", "尽快", "迫切", "急迫".\n'
+        f'Respond with ONLY the single word "urgent" or "normal". No other text.'
+    )
+    response = model([ChatMessage(role="user", content=prompt)])
+    result = response.content.strip().lower()
+    print(f"analyze_request_urgency LLM response: '{result}'. Request: '{request}'")
+    return "urgent" if result == "urgent" else "normal"
 
 
 @tool
@@ -292,7 +303,7 @@ class ChineseBankPostOfficeAgent(ToolCallingAgent):
     def __init__(self, model_to_use: OpenAIServerModel):
         self.request_analyzer = RequestAnalysisAgent(model_to_use)
         # TODO: Learner Task 3a: Instantiate the UrgencyDetectorAgent
-        self.urgency_detector: Optional[UrgencyDetectorAgent] = None # Placeholder
+        self.urgency_detector: Optional[UrgencyDetectorAgent] = UrgencyDetectorAgent(model_to_use)
         
         super().__init__(
             tools=[
@@ -327,12 +338,12 @@ class ChineseBankPostOfficeAgent(ToolCallingAgent):
         urgency_level = "normal" # Placeholder
         is_urgent_bool = False   # Placeholder
         # Example of how it might be used:
-        # if self.urgency_detector:
-        #    urgency_level = self.urgency_detector.get_llm_urgency_assessment(request)
-        #    is_urgent_bool = urgency_level == "urgent"
-        #    if is_urgent_bool:
-        #        booking_manager.routing_accuracy["urgent_requests_identified_by_llm"] +=1
-        print(f"LLM Assessed Urgency: '{urgency_level}' (NEEDS IMPLEMENTATION BY LEARNER)")
+        if self.urgency_detector:
+           urgency_level = self.urgency_detector.get_llm_urgency_assessment(request)
+           is_urgent_bool = urgency_level == "urgent"
+           if is_urgent_bool:
+               booking_manager.routing_accuracy["urgent_requests_identified_by_llm"] +=1
+        print(f"LLM Assessed Urgency: '{urgency_level}'")
         
 
         if diagnosed_service_type.lower() == expected_service_for_metric.lower():

@@ -9,6 +9,7 @@ This repo is meant to be used to keep things organized during content developmen
 This repo contains a folder for each `lesson`.
 
 Example
+
 ```
 lesson-1-hello
 lesson-2-world
@@ -19,6 +20,7 @@ lesson-4-bar
 Each `lesson` folder is named using the naming convention of `lesson-#-name-of-lesson`.
 
 Example
+
 ```
 lesson-1-hello
 ```
@@ -30,3 +32,27 @@ If you require an additional lesson folder, you can make a copy of the folder an
 ### Exercises Folder
 
 Each `lesson` folder contains an `exercises` folder. This `exercises` folder should contain all files and instructions necessary for the exercises along with the solution. The solutions for these exercises will be shared with students. See the `README` in the `exercises` folder for information about folder structure.
+
+### Local Env Setup
+
+To run the exercises withing this repo in your local machine(not the Udacity Workspace), run the following in the project root.
+
+#### Init python venv
+
+So you don't mess up your System's python
+
+```bash
+python3 -m venv .venv
+```
+
+#### Activate venv
+
+```bash
+ source .venv/bin/activate
+```
+
+#### Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```

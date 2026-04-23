@@ -166,7 +166,10 @@ def create_new_event(event_name: str, date: str, description: str) -> str:
     # 2. If successful (returns True), return a confirmation message
     # 3. If it fails (unlikely with current implementation), return failure message
     # Example: return f"Event '{event_name}' on {date} successfully created: {description}."
-    pass
+    response = event_system.add_event(event_name, date, description)
+    if response:
+        return f"Event '{event_name}' on {date} successfully created: {description}."
+    return f"Failed to create event '{event_name}' on {date}."
 
 # ========================================
 # STUDENT TASK 2: Implement list_upcoming_events tool
@@ -184,7 +187,11 @@ def list_upcoming_events() -> str:
     # 1. Call event_system.list_events() to get all events
     # 2. If the list is empty, return "No upcoming events are currently scheduled."
     # 3. Otherwise, return the events as JSON: f"Upcoming events: {json.dumps(events)}"
-    pass
+    events = event_system.list_events()
+    if not events:
+        return "No upcoming events are currently scheduled."
+    return f"Upcoming events: {json.dumps(events)}"
+
 
 # ========================================
 # STUDENT TASK 3: Implement log_maintenance_request tool
@@ -208,7 +215,8 @@ def log_maintenance_request(area: str, issue_description: str, reported_by: str)
     # 2. This returns a request_id (int)
     # 3. Return a confirmation message that includes all the information
     # Example: f"Maintenance request logged for '{area}' (Issue: '{issue_description}', Reported by: {reported_by}). Request ID: {request_id}."
-    pass
+    request_id = maintenance_log.add_entry(area, issue_description, reported_by)
+    return f"Maintenance request logged for '{area}' (Issue: '{issue_description}', Reported by: {reported_by}). Request ID: {request_id}."
 
 # ========================================
 # STUDENT TASK 4: Implement view_maintenance_log tool
@@ -226,7 +234,10 @@ def view_maintenance_log() -> str:
     # 1. Call maintenance_log.view_log() to get all log entries
     # 2. If the list is empty, return "The maintenance log is currently empty."
     # 3. Otherwise, return the log as JSON: f"Maintenance Log: {json.dumps(log)}"
-    pass
+    log = maintenance_log.view_log()
+    if not log:
+        return "The maintenance log is currently empty."
+    return f"Maintenance Log: {json.dumps(log)}"
 
 @tool
 def submit_request_diagnosis(chosen_category: str, original_request_for_context: str) -> str:

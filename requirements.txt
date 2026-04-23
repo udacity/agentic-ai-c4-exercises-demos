@@ -1,5 +1,9 @@
 matplotlib
 networkx
 smolagents
+pydantic-ai
 numpy
-sklearn
+scikit-learn
+openai
+pandas
+sqlalchemy

@@ -189,7 +189,7 @@ class PurchaseAgent(ToolCallingAgent):
     
     def __init__(self, model: OpenAIServerModel):
         super().__init__(
-            tools=[purchase_fruit, get_purchase_history],  # TODO: Add get_purchase_summary
+            tools=[purchase_fruit, get_purchase_history,get_purchase_summary],
             model=model,
             name="purchase_agent",
             description="Handles fruit purchases, purchase history, and purchase summaries.",

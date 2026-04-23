@@ -1,0 +1,89 @@
+Munder Difflin Multi-Agent System - Design Notes
+
+1) Architecture Summary
+
+The solution uses a hub-and-spoke architecture with one orchestrator and three worker agents.
+
+- Orchestrator
+  - Parses incoming request text.
+  - Routes work to inventory, quote, or sales worker flows.
+  - Uses a routing evaluator to validate and optionally override initial routing decisions.
+- Inventory Agent
+  - Performs stock checks and reorder assessment.
+  - Provides shortage and delivery-date rationale for unfulfilled requests.
+- Quoting Agent
+  - Generates quote totals and explanation using quantity and historical quote context.
+- Sales Agent
+  - Finalizes fulfillable orders and records transactions.
+
+Agent count remains within the project limit (max 5).
+
+2) Tool Mapping to Required Helper Functions
+
+The implementation uses all required helper functions from the starter code:
+
+- create_transaction
+  - Sales order persistence and transaction logging.
+- get_all_inventory
+  - Inventory snapshots for quoting and routing context.
+- get_stock_level
+  - Item-level availability checks for inventory and sales validation.
+- get_supplier_delivery_date
+  - Delivery ETA computation for shortages/reorders.
+- get_cash_balance
+  - Financial impact checks after sales processing.
+- generate_financial_report
+  - End-of-run report generation for evaluation.
+- search_quote_history
+  - Historical context for quote generation.
+
+3) Workflow Behavior
+
+High-level flow:
+
+- Customer request arrives as text.
+- Orchestrator classifies request type and item/quantity intent.
+- Routing evaluator checks classification quality.
+- Worker agent executes:
+  - inventory_inquiry -> Inventory Agent
+  - quote_request -> Quoting Agent
+  - sales_order -> Quoting Agent (price) + Sales Agent (finalization)
+- If order cannot be fulfilled, shortage and delivery ETA are provided.
+- Responses are customer-facing and include rationale.
+
+4) Evaluation Results Snapshot
+
+Evaluation used quote_requests_sample.csv and produced test_results.csv.
+
+Observed rubric-linked outcomes in test_results.csv:
+
+- Full dataset processed: 20 requests.
+- Cash balance changes >= 3: met.
+- Quote responses >= 3: met.
+- Not all requests fulfilled, with reasons: met.
+
+5) Design Strengths
+
+- Clear separation of responsibilities between orchestrator and workers.
+- Structured and explainable customer responses.
+- Deterministic fallback behavior around model decisions.
+- Complete helper-function coverage aligned with rubric requirements.
+
+6) Known Limitations and Improvements
+
+- Routing can still be sensitive to phrasing in some edge cases.
+- Inventory underflow edge behavior can occur in repeated scenarios and should be further guarded.
+
+Recommended improvements:
+
+- Add confidence gating to routing evaluator overrides.
+- Add explicit structured columns in test_results.csv (request_type_detected, quote_fulfilled, order_fulfilled, reason).
+- Add inventory reservation logic to improve quote-to-order consistency.
+
+7) Key Output Files
+
+- project_starter.py
+- diagram.png (source: diagram.mmd)
+- test_results.csv
+- design_notes.txt
+- docs/system_analysis.md

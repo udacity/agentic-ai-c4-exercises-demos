@@ -1,13 +1,20 @@
 import pandas as pd
 import numpy as np
 import os
+import re
 import time
 import dotenv
 import ast
 from sqlalchemy.sql import text
 from datetime import datetime, timedelta
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 from sqlalchemy import create_engine, Engine
+from pydantic import BaseModel, Field
+from pydantic_ai import Agent, RunContext
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
+
+dotenv.load_dotenv()
 
 # Create an SQLite database
 db_engine = create_engine("sqlite:///munder_difflin.db")
@@ -272,6 +279,15 @@ def create_transaction(
         if transaction_type not in {"stock_orders", "sales"}:
             raise ValueError("Transaction type must be 'stock_orders' or 'sales'")
 
+        # Hard safety check: never allow sales to exceed available stock.
+        if transaction_type == "sales":
+            stock_snapshot = get_stock_level(item_name, date_str)
+            available_units = int(stock_snapshot["current_stock"].iloc[0])
+            if quantity > available_units:
+                raise ValueError(
+                    f"Insufficient stock for sale: requested {quantity}, available {available_units}."
+                )
+
         # Prepare transaction record as a single-row DataFrame
         transaction = pd.DataFrame([{
             "item_name": item_name,
@@ -351,11 +367,14 @@ def get_stock_level(item_name: str, as_of_date: Union[str, datetime]) -> pd.Data
     stock_query = """
         SELECT
             item_name,
-            COALESCE(SUM(CASE
-                WHEN transaction_type = 'stock_orders' THEN units
-                WHEN transaction_type = 'sales' THEN -units
-                ELSE 0
-            END), 0) AS current_stock
+            MAX(
+                COALESCE(SUM(CASE
+                    WHEN transaction_type = 'stock_orders' THEN units
+                    WHEN transaction_type = 'sales' THEN -units
+                    ELSE 0
+                END), 0),
+                0
+            ) AS current_stock
         FROM transactions
         WHERE item_name = :item_name
         AND transaction_date <= :as_of_date
@@ -592,20 +611,970 @@ def search_quote_history(search_terms: List[str], limit: int = 5) -> List[Dict]:
 # Set up and load your env parameters and instantiate your model.
 
 
+class RequestIntent(BaseModel):
+    request_type: str = Field(
+        description="One of: inventory_inquiry, quote_request, sales_order, unknown"
+    )
+    item_name: Optional[str] = None
+    quantity: Optional[int] = None
+    rationale: str = ""
+
+
+class AgentResult(BaseModel):
+    status: str
+    message: str
+    details: Dict = Field(default_factory=dict)
+
+
+class SalesDecision(BaseModel):
+    status: str = Field(description="Either ok or rejected")
+    rationale: str = Field(description="Reason for approving or rejecting the sale")
+    fulfillable_units: int = Field(description="How many units can be fulfilled immediately")
+
+
+class QuoteDecision(BaseModel):
+    unit_price: float = Field(description="Quoted unit price after discount")
+    discount_rate: float = Field(description="Discount rate as a decimal between 0 and 0.5")
+    total_amount: float = Field(description="Final quoted total amount")
+    rationale: str = Field(description="Short customer-safe explanation for the quote")
+
+
+class InventoryDecision(BaseModel):
+    status: str = Field(description="Either ok or pending")
+    reorder_needed: bool = Field(description="Whether a reorder is required")
+    shortage: int = Field(description="Units missing to satisfy the inventory need")
+    rationale: str = Field(description="Short explanation of stock position and reorder need")
+
+
+class RoutingEvaluation(BaseModel):
+    final_request_type: str = Field(
+        description="One of: inventory_inquiry, quote_request, sales_order, unknown"
+    )
+    should_override: bool = Field(description="Whether the initial router intent should be overridden")
+    rationale: str = Field(description="Why the decision was kept or overridden")
+
+
 """Set up tools for your agents to use, these should be methods that combine the database functions above
  and apply criteria to them to ensure that the flow of the system is correct."""
 
 
 # Tools for inventory agent
+class InventoryAgent:
+    """Inventory-focused worker agent with deterministic and model-assisted checks."""
+
+    def __init__(self) -> None:
+        self.inventory_agent = self._build_inventory_agent()
+
+    def tool_get_stock_level(self, item_name: str, as_of_date: str) -> Dict[str, int]:
+        stock_df = get_stock_level(item_name, as_of_date)
+        return {
+            "item_name": item_name,
+            "current_stock": int(stock_df["current_stock"].iloc[0]),
+        }
+
+    def tool_get_all_inventory(self, as_of_date: str) -> Dict[str, int]:
+        return get_all_inventory(as_of_date)
+
+    def tool_get_supplier_delivery_date(self, input_date_str: str, quantity: int) -> str:
+        return get_supplier_delivery_date(input_date_str, quantity)
+
+    def _build_inventory_agent(self) -> Optional[Agent]:
+        """Build and configure the inventory decision agent with tool registrations."""
+
+        api_key = os.getenv("UDACITY_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        model_name = os.getenv("UDACITY_OPENAI_MODEL", "gpt-4o-mini")
+        base_url = os.getenv("UDACITY_OPENAI_BASE_URL", "https://openai.vocareum.com/v1")
+
+        if not api_key:
+            return None
+
+        provider = OpenAIProvider(base_url=base_url, api_key=api_key)
+        model = OpenAIChatModel(model_name, provider=provider)
+
+        inventory_agent = Agent(
+            model=model,
+            output_type=InventoryDecision,
+            system_prompt=(
+                "You are an inventory assessment agent for a paper supply company. "
+                "Given current stock, minimum stock, and optionally requested quantity, decide whether a reorder is needed. "
+                "Return status='pending' when a reorder is needed, otherwise status='ok'. "
+                "Set shortage to the number of units missing relative to the requested quantity when one is provided, or 0 when no reorder is needed. "
+                "Keep the rationale brief and operationally clear. "
+                "You may use available tools when needed to validate stock and delivery information."
+            ),
+            retries=1,
+            output_retries=1,
+        )
+
+        @inventory_agent.tool
+        def tool_get_stock_level(ctx: RunContext[None], item_name: str, as_of_date: str) -> Dict[str, int]:
+            return self.tool_get_stock_level(item_name, as_of_date)
+
+        @inventory_agent.tool
+        def tool_get_all_inventory(ctx: RunContext[None], as_of_date: str) -> Dict[str, int]:
+            return self.tool_get_all_inventory(as_of_date)
+
+        @inventory_agent.tool
+        def tool_get_supplier_delivery_date(ctx: RunContext[None], input_date_str: str, quantity: int) -> str:
+            return self.tool_get_supplier_delivery_date(input_date_str, quantity)
+
+        return inventory_agent
+
+    def _get_inventory_context(self, item_name: str, as_of_date: str) -> Dict[str, int]:
+        """Collect current and minimum stock context required for inventory decisions."""
+
+        stock_context = self.tool_get_stock_level(item_name, as_of_date)
+        current_stock = int(stock_context["current_stock"])
+
+        inventory_df = pd.read_sql(
+            "SELECT min_stock_level FROM inventory WHERE item_name = :item_name LIMIT 1",
+            db_engine,
+            params={"item_name": item_name},
+        )
+        min_stock_level = int(inventory_df["min_stock_level"].iloc[0]) if not inventory_df.empty else 0
+
+        return {
+            "current_stock": current_stock,
+            "min_stock_level": min_stock_level,
+        }
+
+    def _fallback_inventory_decision(
+        self,
+        current_stock: int,
+        min_stock_level: int,
+        needed_qty: Optional[int] = None,
+    ) -> InventoryDecision:
+        """Produce a deterministic inventory decision when model output is unavailable or invalid."""
+
+        if needed_qty is None:
+            if current_stock < min_stock_level:
+                return InventoryDecision(
+                    status="pending",
+                    reorder_needed=True,
+                    shortage=max(0, min_stock_level - current_stock),
+                    rationale=(
+                        f"Current stock is below the minimum stock threshold of {min_stock_level}."
+                    ),
+                )
+
+            return InventoryDecision(
+                status="ok",
+                reorder_needed=False,
+                shortage=0,
+                rationale="Current stock is above the minimum stock threshold.",
+            )
+
+        shortage = max(0, needed_qty - current_stock)
+        if shortage > 0:
+            return InventoryDecision(
+                status="pending",
+                reorder_needed=True,
+                shortage=shortage,
+                rationale=(
+                    f"Requested quantity exceeds available stock. Requested {needed_qty}, available {current_stock}."
+                ),
+            )
+
+        return InventoryDecision(
+            status="ok",
+            reorder_needed=False,
+            shortage=0,
+            rationale="Sufficient inventory is available for the requested quantity.",
+        )
+
+    def _decide_inventory(
+        self,
+        item_name: str,
+        as_of_date: str,
+        current_stock: int,
+        min_stock_level: int,
+        needed_qty: Optional[int] = None,
+    ) -> InventoryDecision:
+        """Run model-assisted inventory reasoning with validation and safe fallback behavior."""
+
+        if self.inventory_agent is None:
+            return self._fallback_inventory_decision(current_stock, min_stock_level, needed_qty)
+
+        prompt = (
+            f"Item: {item_name}\n"
+            f"As of date: {as_of_date}\n"
+            f"Current stock: {current_stock}\n"
+            f"Minimum stock level: {min_stock_level}\n"
+            f"Requested quantity: {needed_qty if needed_qty is not None else 'not provided'}\n"
+            "Assess inventory status and reorder need."
+        )
+
+        try:
+            result = self.inventory_agent.run_sync(prompt)
+            decision = result.output
+            if decision.status not in {"ok", "pending"}:
+                return self._fallback_inventory_decision(current_stock, min_stock_level, needed_qty)
+            if decision.shortage < 0:
+                return self._fallback_inventory_decision(current_stock, min_stock_level, needed_qty)
+            if needed_qty is not None:
+                expected_shortage = max(0, needed_qty - current_stock)
+                if decision.reorder_needed != (expected_shortage > 0):
+                    return self._fallback_inventory_decision(current_stock, min_stock_level, needed_qty)
+                if decision.shortage != expected_shortage:
+                    return self._fallback_inventory_decision(current_stock, min_stock_level, needed_qty)
+            return decision
+        except Exception:
+            return self._fallback_inventory_decision(current_stock, min_stock_level, needed_qty)
+
+    def check_inventory(self, item_name: str, as_of_date: str) -> AgentResult:
+        """Handle inventory inquiry requests for a single item and date."""
+
+        inventory_context = self._get_inventory_context(item_name, as_of_date)
+        current_stock = inventory_context["current_stock"]
+        min_stock_level = inventory_context["min_stock_level"]
+        decision = self._decide_inventory(
+            item_name=item_name,
+            as_of_date=as_of_date,
+            current_stock=current_stock,
+            min_stock_level=min_stock_level,
+        )
+
+        message = f"Current stock for {item_name}: {current_stock}"
+        if decision.reorder_needed:
+            message += f". Reorder recommended: {decision.rationale}"
+
+        return AgentResult(
+            status=decision.status,
+            message=message,
+            details={
+                "item_name": item_name,
+                "current_stock": current_stock,
+                "min_stock_level": min_stock_level,
+                "reorder_needed": decision.reorder_needed,
+                "shortage": decision.shortage,
+                "rationale": decision.rationale,
+            },
+        )
+
+    def maybe_reorder(self, item_name: str, needed_qty: int, as_of_date: str) -> AgentResult:
+        """Assess shortage against requested quantity and return reorder guidance when needed."""
+
+        inventory_context = self._get_inventory_context(item_name, as_of_date)
+        current_stock = inventory_context["current_stock"]
+        min_stock_level = inventory_context["min_stock_level"]
+        decision = self._decide_inventory(
+            item_name=item_name,
+            as_of_date=as_of_date,
+            current_stock=current_stock,
+            min_stock_level=min_stock_level,
+            needed_qty=needed_qty,
+        )
+
+        if not decision.reorder_needed:
+            return AgentResult(
+                status="ok",
+                message="No reorder needed.",
+                details={
+                    "shortage": 0,
+                    "delivery_date": as_of_date,
+                    "rationale": decision.rationale,
+                },
+            )
+
+        delivery_date = self.tool_get_supplier_delivery_date(as_of_date, decision.shortage)
+        return AgentResult(
+            status="pending",
+            message=f"Reorder needed for {decision.shortage} units. Estimated delivery: {delivery_date}.",
+            details={
+                "shortage": decision.shortage,
+                "delivery_date": delivery_date,
+                "rationale": decision.rationale,
+            },
+        )
 
 
 # Tools for quoting agent
+class QuotingAgent:
+    """Pricing and quotation worker agent with deterministic fallback quote logic."""
+
+    def __init__(self) -> None:
+        self.quote_agent = self._build_quote_agent()
+
+    def tool_search_quote_history(self, search_terms: List[str], limit: int = 5) -> List[Dict]:
+        return search_quote_history(search_terms, limit)
+
+    def tool_get_all_inventory(self, as_of_date: str) -> Dict[str, int]:
+        return get_all_inventory(as_of_date)
+
+    def tool_get_stock_level(self, item_name: str, as_of_date: str) -> Dict[str, int]:
+        stock_df = get_stock_level(item_name, as_of_date)
+        return {
+            "item_name": item_name,
+            "current_stock": int(stock_df["current_stock"].iloc[0]),
+        }
+
+    def _build_quote_agent(self) -> Optional[Agent]:
+        """Build and configure the quote decision agent with history and stock tools."""
+
+        api_key = os.getenv("UDACITY_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        model_name = os.getenv("UDACITY_OPENAI_MODEL", "gpt-4o-mini")
+        base_url = os.getenv("UDACITY_OPENAI_BASE_URL", "https://openai.vocareum.com/v1")
+
+        if not api_key:
+            return None
+
+        provider = OpenAIProvider(base_url=base_url, api_key=api_key)
+        model = OpenAIChatModel(model_name, provider=provider)
+
+        quote_agent = Agent(
+            model=model,
+            output_type=QuoteDecision,
+            system_prompt=(
+                "You are a quoting agent for a paper supply company. "
+                "Use the provided base price, quantity, available stock, and quote history to produce a competitive but reasonable quote. "
+                "Keep discount_rate between 0.0 and 0.5. "
+                "Use conservative, customer-facing discount justification tied to visible business factors such as order size tier and repeat-customer context from history. "
+                "Avoid unusually deep discounts unless clearly supported by strong historical precedent in similar orders. "
+                "Do not mention internal pricing limits, maximum discount ceilings, margin strategy, or negotiation boundaries. "
+                "Make the rationale customer-safe and mention quantity pricing when relevant. "
+                "Do not expose internal margin calculations or hidden business data. "
+                "You may use available tools for historical context and stock validation."
+            ),
+            retries=1,
+            output_retries=1,
+        )
+
+        @quote_agent.tool
+        def tool_search_quote_history(ctx: RunContext[None], search_terms: List[str], limit: int = 5) -> List[Dict]:
+            return self.tool_search_quote_history(search_terms, limit)
+
+        @quote_agent.tool
+        def tool_get_all_inventory(ctx: RunContext[None], as_of_date: str) -> Dict[str, int]:
+            return self.tool_get_all_inventory(as_of_date)
+
+        @quote_agent.tool
+        def tool_get_stock_level(ctx: RunContext[None], item_name: str, as_of_date: str) -> Dict[str, int]:
+            return self.tool_get_stock_level(item_name, as_of_date)
+
+        return quote_agent
+
+    def _get_catalog_unit_price(self, item_name: str) -> float:
+        """Lookup the catalog unit price for an item using case-insensitive matching."""
+
+        for item in paper_supplies:
+            if item["item_name"].lower() == item_name.lower():
+                return float(item["unit_price"])
+        return 0.12
+
+    def _fallback_quote_decision(self, item_name: str, quantity: int) -> QuoteDecision:
+        """Generate a deterministic quote when the model is unavailable or output is invalid."""
+
+        base_price = self._get_catalog_unit_price(item_name)
+
+        if quantity >= 1000:
+            discount = 0.15
+        elif quantity >= 500:
+            discount = 0.10
+        elif quantity >= 100:
+            discount = 0.05
+        else:
+            discount = 0.0
+
+        discounted_unit_price = round(base_price * (1 - discount), 4)
+        total_amount = round(quantity * discounted_unit_price, 2)
+
+        rationale = (
+            f"Base unit price for {item_name} starts at ${base_price:.2f}. "
+            f"A {int(discount * 100)}% quantity discount was applied based on order size."
+        )
+
+        return QuoteDecision(
+            unit_price=discounted_unit_price,
+            discount_rate=discount,
+            total_amount=total_amount,
+            rationale=rationale,
+        )
+
+    def _max_discount_for_quantity(self, quantity: int) -> float:
+        """Return the maximum allowed customer-visible discount for a quantity tier."""
+
+        if quantity >= 1000:
+            return 0.15
+        if quantity >= 500:
+            return 0.10
+        if quantity >= 100:
+            return 0.05
+        return 0.0
+
+    def _decide_quote(
+        self,
+        item_name: str,
+        quantity: int,
+        as_of_date: str,
+        available_stock: int,
+        history: List[Dict],
+    ) -> QuoteDecision:
+        """Run model-assisted quote generation with bounded validation and fallback."""
+
+        if self.quote_agent is None:
+            return self._fallback_quote_decision(item_name, quantity)
+
+        base_price = self._get_catalog_unit_price(item_name)
+        history_lines = []
+        for idx, record in enumerate(history[:5], start=1):
+            history_lines.append(
+                f"{idx}. total_amount={record.get('total_amount')}, "
+                f"job_type={record.get('job_type')}, order_size={record.get('order_size')}, "
+                f"event_type={record.get('event_type')}"
+            )
+        history_summary = "\n".join(history_lines) if history_lines else "No relevant quote history found."
+
+        prompt = (
+            f"Item: {item_name}\n"
+            f"Quantity: {quantity}\n"
+            f"Available stock: {available_stock}\n"
+            f"Base catalog unit price: {base_price:.2f}\n"
+            f"As of date: {as_of_date}\n"
+            f"Historical quote summary:\n{history_summary}\n"
+            "Produce a quote decision."
+        )
+
+        try:
+            result = self.quote_agent.run_sync(prompt)
+            decision = result.output
+
+            max_allowed_discount = self._max_discount_for_quantity(quantity)
+            if not (0.0 <= decision.discount_rate <= max_allowed_discount):
+                return self._fallback_quote_decision(item_name, quantity)
+            if decision.unit_price <= 0 or decision.total_amount <= 0:
+                return self._fallback_quote_decision(item_name, quantity)
+
+            # Quote math must remain internally consistent for customer-facing responses.
+            expected_total = round(quantity * decision.unit_price, 2)
+            if abs(expected_total - round(decision.total_amount, 2)) > 0.01:
+                return self._fallback_quote_decision(item_name, quantity)
+
+            # Keep unit pricing in a plausible range relative to base catalog price.
+            min_unit_price = round(base_price * (1 - max_allowed_discount), 4)
+            if decision.unit_price < min_unit_price or decision.unit_price > round(base_price, 4):
+                return self._fallback_quote_decision(item_name, quantity)
+
+            return decision
+        except Exception:
+            return self._fallback_quote_decision(item_name, quantity)
+
+    def generate_quote(self, item_name: str, quantity: int, as_of_date: str) -> AgentResult:
+        """Create a customer-facing quote response with supporting context details."""
+
+        history = self.tool_search_quote_history([item_name], limit=5)
+        inventory_snapshot = self.tool_get_all_inventory(as_of_date)
+        available_stock = int(inventory_snapshot.get(item_name, 0))
+        decision = self._decide_quote(item_name, quantity, as_of_date, available_stock, history)
+
+        return AgentResult(
+            status="ok",
+            message=f"Quote for {quantity} x {item_name}: ${decision.total_amount:.2f}",
+            details={
+                "item_name": item_name,
+                "quantity": quantity,
+                "total_amount": round(decision.total_amount, 2),
+                "unit_price": round(decision.unit_price, 4),
+                "discount_rate": decision.discount_rate,
+                "available_stock": available_stock,
+                "quote_explanation": decision.rationale,
+                "history_matches": len(history),
+            },
+        )
 
 
 # Tools for ordering agent
+class SalesAgent:
+    """Sales fulfillment worker agent with strict anti-oversell safety checks."""
+
+    def __init__(self) -> None:
+        self.decision_agent = self._build_sales_agent()
+
+    def tool_get_stock_level(self, item_name: str, as_of_date: str) -> Dict[str, int]:
+        stock_df = get_stock_level(item_name, as_of_date)
+        return {
+            "item_name": item_name,
+            "current_stock": int(stock_df["current_stock"].iloc[0]),
+        }
+
+    def tool_create_transaction(
+        self,
+        item_name: str,
+        transaction_type: str,
+        quantity: int,
+        price: float,
+        date: str,
+    ) -> int:
+        return create_transaction(item_name, transaction_type, quantity, price, date)
+
+    def tool_get_cash_balance(self, as_of_date: str) -> float:
+        return get_cash_balance(as_of_date)
+
+    def tool_generate_financial_report(self, as_of_date: str) -> Dict:
+        return generate_financial_report(as_of_date)
+
+    def _build_sales_agent(self) -> Optional[Agent]:
+        """Build and configure the sales decision agent with transactional tools."""
+
+        api_key = os.getenv("UDACITY_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        model_name = os.getenv("UDACITY_OPENAI_MODEL", "gpt-4o-mini")
+        base_url = os.getenv("UDACITY_OPENAI_BASE_URL", "https://openai.vocareum.com/v1")
+
+        if not api_key:
+            return None
+
+        provider = OpenAIProvider(base_url=base_url, api_key=api_key)
+        model = OpenAIChatModel(model_name, provider=provider)
+
+        sales_agent = Agent(
+            model=model,
+            output_type=SalesDecision,
+            system_prompt=(
+                "You are a sales finalization agent for a paper supply company. "
+                "Given the requested quantity, available stock, quoted total price, and request date, decide whether the order should be fulfilled immediately. "
+                "Return status='ok' only when the full requested quantity can be fulfilled now. "
+                "Return status='rejected' if stock is insufficient. "
+                "Set fulfillable_units to the number of units that can be fulfilled immediately without overselling. "
+                "Do not approve partial fulfillment as ok. "
+                "You may use available tools to verify stock and financial context."
+            ),
+            retries=1,
+            output_retries=1,
+        )
+
+        @sales_agent.tool
+        def tool_get_stock_level(ctx: RunContext[None], item_name: str, as_of_date: str) -> Dict[str, int]:
+            return self.tool_get_stock_level(item_name, as_of_date)
+
+        @sales_agent.tool
+        def tool_create_transaction(
+            ctx: RunContext[None],
+            item_name: str,
+            transaction_type: str,
+            quantity: int,
+            price: float,
+            date: str,
+        ) -> int:
+            return self.tool_create_transaction(item_name, transaction_type, quantity, price, date)
+
+        @sales_agent.tool
+        def tool_get_cash_balance(ctx: RunContext[None], as_of_date: str) -> float:
+            return self.tool_get_cash_balance(as_of_date)
+
+        @sales_agent.tool
+        def tool_generate_financial_report(ctx: RunContext[None], as_of_date: str) -> Dict:
+            return self.tool_generate_financial_report(as_of_date)
+
+        return sales_agent
+
+    def _fallback_sales_decision(self, quantity: int, current_stock: int) -> SalesDecision:
+        """Return deterministic sales approval/rejection based on current stock only."""
+
+        if current_stock < quantity:
+            return SalesDecision(
+                status="rejected",
+                rationale=(
+                    f"Insufficient inventory for full fulfillment. Requested {quantity}, available {current_stock}."
+                ),
+                fulfillable_units=current_stock,
+            )
+
+        return SalesDecision(
+            status="ok",
+            rationale="Sufficient inventory is available to fulfill the full order immediately.",
+            fulfillable_units=quantity,
+        )
+
+    def _decide_sale(
+        self,
+        item_name: str,
+        quantity: int,
+        total_price: float,
+        current_stock: int,
+        as_of_date: str,
+    ) -> SalesDecision:
+        """Run model-assisted fulfillment decisioning with strict output validation."""
+
+        if self.decision_agent is None:
+            return self._fallback_sales_decision(quantity, current_stock)
+
+        prompt = (
+            f"Item: {item_name}\n"
+            f"Requested quantity: {quantity}\n"
+            f"Available stock: {current_stock}\n"
+            f"Quoted total price: {total_price:.2f}\n"
+            f"Request date: {as_of_date}\n"
+            "Decide whether to fulfill now or reject due to insufficient stock."
+        )
+
+        try:
+            result = self.decision_agent.run_sync(prompt)
+            decision = result.output
+            if decision.status not in {"ok", "rejected"}:
+                return self._fallback_sales_decision(quantity, current_stock)
+            if decision.fulfillable_units < 0:
+                return self._fallback_sales_decision(quantity, current_stock)
+            if decision.fulfillable_units > current_stock:
+                return self._fallback_sales_decision(quantity, current_stock)
+            if decision.status == "ok" and decision.fulfillable_units < quantity:
+                return self._fallback_sales_decision(quantity, current_stock)
+            if decision.status == "ok" and current_stock < quantity:
+                return self._fallback_sales_decision(quantity, current_stock)
+            return decision
+        except Exception:
+            return self._fallback_sales_decision(quantity, current_stock)
+
+    def finalize_sale(self, item_name: str, quantity: int, total_price: float, as_of_date: str) -> AgentResult:
+        """Finalize sale transactions safely and reject any request that risks overselling."""
+
+        stock_context = self.tool_get_stock_level(item_name, as_of_date)
+        current_stock = int(stock_context["current_stock"])
+
+        # Hard safety invariant: never allow overselling regardless of model output.
+        if current_stock < quantity:
+            return AgentResult(
+                status="rejected",
+                message=(
+                    f"Order cannot be fulfilled: requested {quantity}, "
+                    f"available {current_stock}."
+                ),
+                details={
+                    "item_name": item_name,
+                    "requested": quantity,
+                    "available": current_stock,
+                    "rationale": "Deterministic stock guard: insufficient inventory for full fulfillment.",
+                    "fulfillable_units": max(current_stock, 0),
+                },
+            )
+
+        decision = self._decide_sale(item_name, quantity, total_price, current_stock, as_of_date)
+
+        if decision.status == "rejected":
+            return AgentResult(
+                status="rejected",
+                message=(
+                    f"Order cannot be fulfilled: requested {quantity}, "
+                    f"available {current_stock}."
+                ),
+                details={
+                    "item_name": item_name,
+                    "requested": quantity,
+                    "available": current_stock,
+                    "rationale": decision.rationale,
+                    "fulfillable_units": decision.fulfillable_units,
+                },
+            )
+
+        try:
+            transaction_id = self.tool_create_transaction(
+                item_name=item_name,
+                transaction_type="sales",
+                quantity=quantity,
+                price=total_price,
+                date=as_of_date,
+            )
+        except Exception:
+            return AgentResult(
+                status="rejected",
+                message=(
+                    f"Order cannot be fulfilled: requested {quantity}, "
+                    f"available {current_stock}."
+                ),
+                details={
+                    "item_name": item_name,
+                    "requested": quantity,
+                    "available": current_stock,
+                    "rationale": "Transaction safety guard blocked oversell.",
+                    "fulfillable_units": max(current_stock, 0),
+                },
+            )
+        cash_after = self.tool_get_cash_balance(as_of_date)
+
+        return AgentResult(
+            status="ok",
+            message="Sale completed.",
+            details={
+                "transaction_id": transaction_id,
+                "cash_balance": cash_after,
+                "item_name": item_name,
+                "quantity": quantity,
+                "total_price": total_price,
+                "rationale": decision.rationale,
+            },
+        )
 
 
 # Set up your agents and create an orchestration agent that will manage them.
+class Orchestrator:
+    """Top-level coordinator that routes requests to inventory, quote, and sales workers."""
+
+    def __init__(self) -> None:
+        self.inventory_agent = InventoryAgent()
+        self.quoting_agent = QuotingAgent()
+        self.sales_agent = SalesAgent()
+        self.router_agent = self._build_router_agent()
+        self.routing_evaluator = self._build_routing_evaluator()
+
+    def _build_router_agent(self) -> Optional[Agent]:
+        """Build the primary intent router agent used for initial request classification."""
+
+        api_key = os.getenv("UDACITY_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        model_name = os.getenv("UDACITY_OPENAI_MODEL", "gpt-4o-mini")
+        base_url = os.getenv("UDACITY_OPENAI_BASE_URL", "https://openai.vocareum.com/v1")
+
+        if not api_key:
+            return None
+
+        provider = OpenAIProvider(base_url=base_url, api_key=api_key)
+        model = OpenAIChatModel(model_name, provider=provider)
+
+        return Agent(
+            model=model,
+            output_type=RequestIntent,
+            system_prompt=(
+                "You are a routing agent for a paper supply company. "
+                "Classify each incoming request as one of: inventory_inquiry, quote_request, sales_order, or unknown. "
+                "Apply intent rules with these priorities: "
+                "1) inventory_inquiry for stock/availability/lead-time questions when no explicit purchase confirmation is present; "
+                "2) quote_request for quote/price/cost/budget questions, including requests that mention quantity; "
+                "3) sales_order when user intent is to transact now (place order, confirm order, proceed with purchase, book it, finalize order). "
+                "If a request contains both order language and pricing/availability questions, prefer quote_request or inventory_inquiry unless the user explicitly confirms to proceed now. "
+                "Never classify as sales_order based only on quantity, product name, or urgent tone. "
+                "Extract requested quantity if present. "
+                "Extract the most likely item_name using exact catalog wording when clear. "
+                "Do not invent unsupported details."
+            ),
+            retries=1,
+            output_retries=1,
+        )
+
+    def _build_routing_evaluator(self) -> Optional[Agent]:
+        """Build the routing evaluator used to review and override weak classifications."""
+
+        api_key = os.getenv("UDACITY_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        model_name = os.getenv("UDACITY_OPENAI_MODEL", "gpt-4o-mini")
+        base_url = os.getenv("UDACITY_OPENAI_BASE_URL", "https://openai.vocareum.com/v1")
+
+        if not api_key:
+            return None
+
+        provider = OpenAIProvider(base_url=base_url, api_key=api_key)
+        model = OpenAIChatModel(model_name, provider=provider)
+
+        return Agent(
+            model=model,
+            output_type=RoutingEvaluation,
+            system_prompt=(
+                "You are a routing quality evaluator for a paper supply assistant. "
+                "Review the incoming request text and an initial request_type classification. "
+                "Return final_request_type as one of inventory_inquiry, quote_request, sales_order, or unknown. "
+                "Override to sales_order only when there is clear transactional intent to buy now (for example: place order, confirm order, proceed with purchase, finalize order). "
+                "If the request is exploratory, asks about price/cost/quote, or asks about stock/availability, prefer quote_request or inventory_inquiry. "
+                "Set should_override=true only when the initial classification is clearly incorrect."
+            ),
+            retries=1,
+            output_retries=1,
+        )
+
+    def _fallback_routing_guardrails(self, request_text: str, intent: RequestIntent) -> RequestIntent:
+        """Apply deterministic keyword-based routing corrections when needed."""
+
+        text = request_text.lower()
+
+        quote_tokens = ["quote", "quotation", "pricing", "price", "cost", "estimate", "budget", "how much", "rate"]
+        inventory_tokens = [
+            "inventory",
+            "stock",
+            "available",
+            "availability",
+            "on hand",
+            "lead time",
+            "in stock",
+            "delivery",
+        ]
+        strong_sales_tokens = [
+            "place order",
+            "book it",
+            "confirm order",
+            "confirm purchase",
+            "proceed with purchase",
+            "proceed with the order",
+            "buy now",
+            "finalize order",
+            "go ahead with order",
+            "i want to order now",
+        ]
+        weak_sales_tokens = ["order", "purchase", "buy"]
+        question_tokens = ["can you", "could you", "do you", "is it", "what", "how", "?"]
+
+        has_quote_signal = any(token in text for token in quote_tokens)
+        has_inventory_signal = any(token in text for token in inventory_tokens)
+        has_strong_sales_signal = any(token in text for token in strong_sales_tokens)
+        has_weak_sales_signal = any(token in text for token in weak_sales_tokens)
+        has_question_signal = any(token in text for token in question_tokens)
+
+        if intent.request_type == "sales_order":
+            if has_quote_signal and not has_strong_sales_signal:
+                intent.request_type = "quote_request"
+                intent.rationale = "Routing guardrail: pricing language present without explicit purchase confirmation."
+            elif has_inventory_signal and not has_strong_sales_signal:
+                intent.request_type = "inventory_inquiry"
+                intent.rationale = "Routing guardrail: inventory language detected without explicit purchase confirmation."
+            elif has_question_signal and has_weak_sales_signal and not has_strong_sales_signal:
+                intent.request_type = "quote_request"
+                intent.rationale = "Routing guardrail: order wording appears exploratory; routing to quote first."
+
+        elif intent.request_type in {"unknown", "quote_request", "inventory_inquiry"}:
+            if has_strong_sales_signal and not has_quote_signal and not has_inventory_signal:
+                intent.request_type = "sales_order"
+                intent.rationale = "Routing guardrail: explicit purchase confirmation detected."
+            elif intent.request_type == "unknown":
+                if has_quote_signal:
+                    intent.request_type = "quote_request"
+                    intent.rationale = "Routing guardrail: quote-related language detected."
+                elif has_inventory_signal:
+                    intent.request_type = "inventory_inquiry"
+                    intent.rationale = "Routing guardrail: inventory-related language detected."
+                elif has_weak_sales_signal and not has_question_signal:
+                    intent.request_type = "sales_order"
+                    intent.rationale = "Routing guardrail: transactional wording detected."
+
+        return intent
+
+    def _apply_routing_guardrails(self, request_text: str, intent: RequestIntent) -> RequestIntent:
+        """Apply heuristic guardrails and optional evaluator-based routing overrides."""
+
+        fallback_intent = self._fallback_routing_guardrails(request_text, intent)
+
+        if self.routing_evaluator is None:
+            return fallback_intent
+
+        prompt = (
+            f"Request text: {request_text}\n"
+            f"Initial request_type: {intent.request_type}\n"
+            f"Initial rationale: {intent.rationale or 'none'}\n"
+            "Evaluate whether the initial classification should be kept or overridden."
+        )
+
+        try:
+            result = self.routing_evaluator.run_sync(prompt)
+            evaluation = result.output
+
+            valid_types = {"inventory_inquiry", "quote_request", "sales_order", "unknown"}
+            if evaluation.final_request_type not in valid_types:
+                return fallback_intent
+
+            if evaluation.should_override:
+                fallback_intent.request_type = evaluation.final_request_type
+
+            if evaluation.rationale:
+                fallback_intent.rationale = f"Routing evaluator: {evaluation.rationale}"
+
+            return fallback_intent
+        except Exception:
+            return fallback_intent
+
+    def _fallback_parse_request(self, request_text: str) -> RequestIntent:
+        """Parse request intent using lightweight regex heuristics when router is unavailable."""
+
+        text = request_text.lower()
+
+        quantity_match = re.search(r"(\d+)", text)
+        quantity = int(quantity_match.group(1)) if quantity_match else None
+
+        request_type = "unknown"
+        if any(token in text for token in ["inventory", "stock", "available"]):
+            request_type = "inventory_inquiry"
+        elif any(token in text for token in ["quote", "price", "cost"]):
+            request_type = "quote_request"
+        elif any(token in text for token in ["order", "buy", "purchase"]):
+            request_type = "sales_order"
+
+        return RequestIntent(
+            request_type=request_type,
+            quantity=quantity,
+            rationale="Fallback regex router used because pydantic-ai routing was unavailable.",
+        )
+
+    def parse_request(self, request_text: str) -> RequestIntent:
+        """Parse and normalize request intent using router output plus fallback safeguards."""
+
+        if self.router_agent is None:
+            return self._fallback_parse_request(request_text)
+
+        try:
+            result = self.router_agent.run_sync(request_text)
+            intent = result.output
+            if intent.quantity is None:
+                fallback_intent = self._fallback_parse_request(request_text)
+                intent.quantity = fallback_intent.quantity
+            intent = self._apply_routing_guardrails(request_text, intent)
+            if not intent.rationale:
+                intent.rationale = "pydantic-ai router classification"
+            return intent
+        except Exception:
+            return self._fallback_parse_request(request_text)
+
+    def _normalize_item_name(self, item_name: Optional[str]) -> Optional[str]:
+        """Map free-form item mentions to canonical catalog names when possible."""
+
+        if not item_name:
+            return None
+
+        supply_lookup = {supply["item_name"].lower(): supply["item_name"] for supply in paper_supplies}
+        normalized = item_name.strip().lower()
+
+        if normalized in supply_lookup:
+            return supply_lookup[normalized]
+
+        for candidate, actual_name in supply_lookup.items():
+            if normalized in candidate or candidate in normalized:
+                return actual_name
+
+        return None
+
+    def _extract_item_name(self, request_text: str) -> str:
+        """Extract a likely catalog item from request text using simple keyword heuristics."""
+
+        text = request_text.lower()
+        # Narrow fallback heuristic: this is not a full catalog search and only handles a few common keywords.
+        if "cardstock" in text:
+            return "Cardstock"
+        if "glossy" in text:
+            return "Glossy paper"
+        if "banner" in text:
+            return "Banner paper"
+        if "letter" in text:
+            return "Letter-sized paper"
+        return "A4 paper"
+
+    def handle_request(self, request_text: str, request_date: str) -> str:
+        """Route and fulfill a user request end-to-end through the worker agents."""
+
+        intent = self.parse_request(request_text)
+        item_name = self._normalize_item_name(intent.item_name) or self._extract_item_name(request_text)
+        quantity = intent.quantity or 100
+
+        if intent.request_type == "inventory_inquiry":
+            result = self.inventory_agent.check_inventory(item_name, request_date)
+            return result.message
+
+        if intent.request_type == "quote_request":
+            quote = self.quoting_agent.generate_quote(item_name, quantity, request_date)
+            return f"{quote.message} {quote.details.get('quote_explanation', '')}"
+
+        if intent.request_type == "sales_order":
+            quote = self.quoting_agent.generate_quote(item_name, quantity, request_date)
+            total_price = float(quote.details.get("total_amount", 0.0))
+            result = self.sales_agent.finalize_sale(item_name, quantity, total_price, request_date)
+            if result.status == "rejected":
+                reorder = self.inventory_agent.maybe_reorder(item_name, quantity, request_date)
+                return (
+                    f"{quote.message} {quote.details.get('quote_explanation', '')} "
+                    f"{result.message} {reorder.message}"
+                )
+            return f"{quote.message} {quote.details.get('quote_explanation', '')} {result.message}"
+
+        return "I could not classify the request. Please ask about inventory, quotes, or orders."
 
 
 # Run your test scenarios by writing them here. Make sure to keep track of them.
@@ -613,7 +1582,7 @@ def search_quote_history(search_terms: List[str], limit: int = 5) -> List[Dict]:
 def run_test_scenarios():
     
     print("Initializing Database...")
-    init_database()
+    init_database(db_engine)
     try:
         quote_requests_sample = pd.read_csv("quote_requests_sample.csv")
         quote_requests_sample["request_date"] = pd.to_datetime(
@@ -639,6 +1608,8 @@ def run_test_scenarios():
     ############
     ############
 
+    orchestrator = Orchestrator()
+
     results = []
     for idx, row in quote_requests_sample.iterrows():
         request_date = row["request_date"].strftime("%Y-%m-%d")
@@ -660,7 +1631,7 @@ def run_test_scenarios():
         ############
         ############
 
-        # response = call_your_multi_agent_system(request_with_date)
+        response = orchestrator.handle_request(request_with_date, request_date)
 
         # Update state
         report = generate_financial_report(request_date)
