@@ -1,4 +1,5 @@
 import json
+from huggingface_hub import Agent
 import pandas as pd
 import numpy as np
 import os
@@ -15,7 +16,7 @@ from sqlalchemy import create_engine, Engine
 # Create an SQLite database
 db_engine = create_engine("sqlite:///munder_difflin.db")
 
-app_model = OpenAIServerModel(
+model = OpenAIServerModel(
     model_id="gpt-4o-mini",
     api_key=os.getenv("UDACITY_OPENAI_API_KEY"),
     api_base="https://openai.vocareum.com/v1",
@@ -798,52 +799,83 @@ class QuotingAgent(ToolCallingAgent):
 
         return quote
     
-    class OrderingAgent(ToolCallingAgent): 
-        def __init__(self, model):
-            super().__init__(
-                model=model, 
-                tools=[get_current_cash_balance, place_sales_order, generate_financial_report],
-                name="OrderingAgent",
-                description="Agent responsible for placing orders and managing financial transactions based on generated quotes and inventory status."
-            )
+class OrderingAgent(ToolCallingAgent): 
+    def __init__(self, model):
+        super().__init__(
+            model=model, 
+            tools=[get_current_cash_balance, place_sales_order, generate_financial_report],
+            name="OrderingAgent",
+            description="Agent responsible for placing orders and managing financial transactions based on generated quotes and inventory status."
+        )
 
-        def place_order(self, quote: Dict) -> Dict[str, int]:
+    def place_order(self, quote: Dict) -> Dict[str, int]:
+        """
+        Places an order based on the provided quote. First checks the current cash balance to ensure sufficient funds, then records the sales transaction if the order can be fulfilled.
+        """
+        response = self.run(
+            f"""You are an ordering agent for Munder Difflin. Your task is to place an order based on a generated quote and manage the financial transactions accordingly.
+
+            Given the following quote details: {json.dumps(quote)}, accomplish the following steps:
+
+            Step 1. Check the current cash balance using the get_current_cash_balance tool to ensure that there are sufficient funds to cover the total amount of the quote.
+            - If the cash balance is sufficient to cover the total amount of the quote, proceed to step 2.
+            - If the cash balance is insufficient, return a response indicating that the order cannot be placed due to insufficient funds.
+
+            Step 2. For each item in the quote that is marked as fulfilled, use the place_sales_order tool to record a sales transaction in the database.
+            - Extract the item name, quantity, total price, and transaction date for each fulfilled item from the quote details.
+            - Call the place_sales_order tool with these details to create a transaction record for each item.
+
+            Step 3. After placing all sales orders for fulfilled items, generate an updated financial report using the generate_financial_report tool to reflect the new cash balance and inventory status after processing the order.
+
+            Return a JSON dictionary containing:
+            - A summary of which items were ordered and their quantities
+            - The total amount of the order
+            - The updated cash balance after placing the order
+            - Any items that could not be ordered due to insufficient stock or other constraints
+            - A clear explanation of any issues encountered during order placement (e.g., insufficient funds, stock shortages) and how they were handled.
+
+            The returned object should be a JSON dictionary and nothing else. Do not include any text outside of the JSON dictionary in your response.
             """
-            Places an order based on the provided quote. First checks the current cash balance to ensure sufficient funds, then records the sales transaction if the order can be fulfilled.
-            """
-            response = self.run(
-                f"""You are an ordering agent for Munder Difflin. Your task is to place an order based on a generated quote and manage the financial transactions accordingly.
+        )
+        if isinstance(response, dict):
+            order_response = response
+        else:
+            order_response = json.loads(str(response))
 
-                Given the following quote details: {json.dumps(quote)}, accomplish the following steps:
+        return order_response
 
-                Step 1. Check the current cash balance using the get_current_cash_balance tool to ensure that there are sufficient funds to cover the total amount of the quote.
-                - If the cash balance is sufficient to cover the total amount of the quote, proceed to step 2.
-                - If the cash balance is insufficient, return a response indicating that the order cannot be placed due to insufficient funds.
+class OrchestrationAgent(Agent):
+    def __init__(self, model, quoting_agent: QuotingAgent, ordering_agent: OrderingAgent):
+        super().__init__(
+            model=model,
+            name="OrchestrationAgent",
+            description="Agent responsible for orchestrating the overall workflow of processing customer requests, generating quotes, and placing orders by coordinating between the QuotingAgent and OrderingAgent.",
+            managed_agents=[quoting_agent, ordering_agent]
+        )
 
-                Step 2. For each item in the quote that is marked as fulfilled, use the place_sales_order tool to record a sales transaction in the database.
-                - Extract the item name, quantity, total price, and transaction date for each fulfilled item from the quote details.
-                - Call the place_sales_order tool with these details to create a transaction record for each item.
+    def process_request(self, request_details: Dict) -> Dict:
+        """
+        Processes a customer request by coordinating the quoting and ordering agents to generate a quote and place an order accordingly.
 
-                Step 3. After placing all sales orders for fulfilled items, generate an updated financial report using the generate_financial_report tool to reflect the new cash balance and inventory status after processing the order.
+        Args:
+            request_details (Dict): A dictionary containing the details of the customer request, such as job type, event type, order size, and any specific requirements.
 
-                Return a JSON dictionary containing:
-                - A summary of which items were ordered and their quantities
-                - The total amount of the order
-                - The updated cash balance after placing the order
-                - Any items that could not be ordered due to insufficient stock or other constraints
-                - A clear explanation of any issues encountered during order placement (e.g., insufficient funds, stock shortages) and how they were handled.
+        Returns:
+            Dict: A dictionary containing the final outcome of processing the request, including the generated quote, order placement results, and any relevant explanations or issues encountered during the process.
+        """
+        # Step 1: Generate a quote using the QuotingAgent
+        quote = self.managed_agents[0].create_quote(request_details)
 
-                The returned object should be a JSON dictionary and nothing else. Do not include any text outside of the JSON dictionary in your response.
-                """
-            )
-            if isinstance(response, dict):
-                order_response = response
-            else:
-                order_response = json.loads(str(response))
+        # Step 2: Place an order using the OrderingAgent based on the generated quote
+        order_result = self.managed_agents[1].place_order(quote)
 
-            return order_response
+        # Compile final response
+        final_response = {
+            "quote": quote,
+            "order_result": order_result,
+        }
 
-
+        return final_response 
 
 # Run your test scenarios by writing them here. Make sure to keep track of them.
 
@@ -875,6 +907,11 @@ def run_test_scenarios():
     ############
     ############
     ############
+    orchestrator = OrchestrationAgent(
+        model=model, 
+        quoting_agent=QuotingAgent(model=model, inventory_agent=InventoryAgent(model=model)),
+        ordering_agent=OrderingAgent(model=model)
+    )
 
     results = []
     for idx, row in quote_requests_sample.iterrows():
@@ -898,6 +935,8 @@ def run_test_scenarios():
         ############
 
         # response = call_your_multi_agent_system(request_with_date)
+
+        response = orchestrator.process_request(request_with_date)
 
         # Update state
         report = generate_financial_report(request_date)
