@@ -4,17 +4,19 @@ import pandas as pd
 import numpy as np
 import os
 import time
-import dotenv
 import ast
 
-from smolagents import OpenAIServerModel, tool, ToolCallingAgent, MultiStepAgent
+from smolagents import OpenAIServerModel, tool, ToolCallingAgent
 from sqlalchemy.sql import text
 from datetime import datetime, timedelta
 from typing import Dict, List, Union
 from sqlalchemy import create_engine, Engine
 
+# Get the directory of the current script
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Create an SQLite database
-db_engine = create_engine("sqlite:///munder_difflin.db")
+db_engine = create_engine(f"sqlite:///{os.path.join(SCRIPT_DIR, 'munder_difflin.db')}")
 
 model = OpenAIServerModel(
     model_id="gpt-4o-mini",
@@ -178,14 +180,14 @@ def init_database(db_engine: Engine, seed: int = 137) -> Engine:
         # ----------------------------
         # 2. Load and initialize 'quote_requests' table
         # ----------------------------
-        quote_requests_df = pd.read_csv("quote_requests.csv")
+        quote_requests_df = pd.read_csv(os.path.join(SCRIPT_DIR, "quote_requests.csv"))
         quote_requests_df["id"] = range(1, len(quote_requests_df) + 1)
         quote_requests_df.to_sql("quote_requests", db_engine, if_exists="replace", index=False)
 
         # ----------------------------
         # 3. Load and transform 'quotes' table
         # ----------------------------
-        quotes_df = pd.read_csv("quotes.csv")
+        quotes_df = pd.read_csv(os.path.join(SCRIPT_DIR, "quotes.csv"))
         quotes_df["request_id"] = range(1, len(quotes_df) + 1)
         quotes_df["order_date"] = initial_date
 
@@ -607,6 +609,7 @@ def search_quote_history(search_terms: List[str], limit: int = 5) -> List[Dict]:
 
 
 # Tools for inventory agent
+@tool
 def check_inventory_levels(as_of_date: str) -> Dict[str, int]:
     """
     Check inventory levels as of a specific date and return items that are below their minimum stock level.
@@ -631,7 +634,7 @@ def check_delivery_date(order_date: str, quantity: int) -> str:
     as a tool within an agentic system.
 
     Args:
-        input_date (str): The starting date for the order in ISO format (YYYY-MM-DD).
+        order_date (str): The starting date for the order in ISO format (YYYY-MM-DD).
         quantity (int): The number of units being ordered.
 
     Returns:
@@ -714,7 +717,7 @@ def place_sales_order(item_name: str, quantity: int, price: float, transaction_d
     return create_transaction(item_name, "sales", quantity, price, transaction_date)
 
 @tool
-def generate_financial_report(as_of_date: str) -> Dict:
+def generate_financial_report_tool(as_of_date: str) -> Dict:
     """
     Tool function to generate a financial report as of a specific date.
 
@@ -732,7 +735,7 @@ def generate_financial_report(as_of_date: str) -> Dict:
 
 # Set up your agents and create an orchestration agent that will manage them.
 class InventoryAgent(ToolCallingAgent):
-    def __init__(self, model):
+    def __init__(self, model) -> None:
         super().__init__(
             model=model, 
             tools=[check_inventory_levels, check_delivery_date, has_sufficient_stock],
@@ -741,7 +744,7 @@ class InventoryAgent(ToolCallingAgent):
         )
 
 class QuotingAgent(ToolCallingAgent):
-    def __init__(self, model, inventory_agent: InventoryAgent):
+    def __init__(self, model, inventory_agent: InventoryAgent) -> None:
         super().__init__(
             model=model, 
             tools=[check_quote_history],
@@ -792,18 +795,13 @@ class QuotingAgent(ToolCallingAgent):
             
             """
         )
-        if isinstance(response, dict):
-            quote = response
-        else:
-            quote = json.loads(str(response))
-
-        return quote
+        return response
     
 class OrderingAgent(ToolCallingAgent): 
-    def __init__(self, model):
+    def __init__(self, model) -> None:
         super().__init__(
             model=model, 
-            tools=[get_current_cash_balance, place_sales_order, generate_financial_report],
+            tools=[get_current_cash_balance, place_sales_order, generate_financial_report_tool],
             name="OrderingAgent",
             description="Agent responsible for placing orders and managing financial transactions based on generated quotes and inventory status."
         )
@@ -844,14 +842,16 @@ class OrderingAgent(ToolCallingAgent):
 
         return order_response
 
-class OrchestrationAgent(Agent):
-    def __init__(self, model, quoting_agent: QuotingAgent, ordering_agent: OrderingAgent):
+class OrchestrationAgent(ToolCallingAgent):
+    def __init__(self, model, quoting_agent: QuotingAgent, ordering_agent: OrderingAgent) -> None:
         super().__init__(
             model=model,
+            tools=[],
             name="OrchestrationAgent",
-            description="Agent responsible for orchestrating the overall workflow of processing customer requests, generating quotes, and placing orders by coordinating between the QuotingAgent and OrderingAgent.",
-            managed_agents=[quoting_agent, ordering_agent]
+            description="Agent responsible for orchestrating the overall workflow of processing customer requests, generating quotes, and placing orders by coordinating between the QuotingAgent and OrderingAgent."
         )
+        self.quoting_agent = quoting_agent
+        self.ordering_agent = ordering_agent
 
     def process_request(self, request_details: Dict) -> Dict:
         """
@@ -864,10 +864,10 @@ class OrchestrationAgent(Agent):
             Dict: A dictionary containing the final outcome of processing the request, including the generated quote, order placement results, and any relevant explanations or issues encountered during the process.
         """
         # Step 1: Generate a quote using the QuotingAgent
-        quote = self.managed_agents[0].create_quote(request_details)
+        quote = self.quoting_agent.create_quote(request_details)
 
         # Step 2: Place an order using the OrderingAgent based on the generated quote
-        order_result = self.managed_agents[1].place_order(quote)
+        order_result = self.ordering_agent.place_order(quote)
 
         # Compile final response
         final_response = {
@@ -882,9 +882,9 @@ class OrchestrationAgent(Agent):
 def run_test_scenarios():
     
     print("Initializing Database...")
-    init_database()
+    init_database(db_engine)
     try:
-        quote_requests_sample = pd.read_csv("quote_requests_sample.csv")
+        quote_requests_sample = pd.read_csv(os.path.join(SCRIPT_DIR, "quote_requests_sample.csv"))
         quote_requests_sample["request_date"] = pd.to_datetime(
             quote_requests_sample["request_date"], format="%m/%d/%y", errors="coerce"
         )
