@@ -1,9 +1,12 @@
+import json
 import pandas as pd
 import numpy as np
 import os
 import time
 import dotenv
 import ast
+
+from smolagents import OpenAIServerModel, tool, ToolCallingAgent, MultiStepAgent
 from sqlalchemy.sql import text
 from datetime import datetime, timedelta
 from typing import Dict, List, Union
@@ -12,11 +15,17 @@ from sqlalchemy import create_engine, Engine
 # Create an SQLite database
 db_engine = create_engine("sqlite:///munder_difflin.db")
 
+app_model = OpenAIServerModel(
+    model_id="gpt-4o-mini",
+    api_key=os.getenv("UDACITY_OPENAI_API_KEY"),
+    api_base="https://openai.vocareum.com/v1",
+)
+
 # List containing the different kinds of papers 
 paper_supplies = [
     # Paper Types (priced per sheet unless specified)
     {"item_name": "A4 paper",                         "category": "paper",        "unit_price": 0.05},
-    {"item_name": "Letter-sized paper",              "category": "paper",        "unit_price": 0.06},
+    {"item_name": "Letter-sized paper",               "category": "paper",        "unit_price": 0.06},
     {"item_name": "Cardstock",                        "category": "paper",        "unit_price": 0.15},
     {"item_name": "Colored paper",                    "category": "paper",        "unit_price": 0.10},
     {"item_name": "Glossy paper",                     "category": "paper",        "unit_price": 0.20},
@@ -597,15 +606,243 @@ def search_quote_history(search_terms: List[str], limit: int = 5) -> List[Dict]:
 
 
 # Tools for inventory agent
+def check_inventory_levels(as_of_date: str) -> Dict[str, int]:
+    """
+    Check inventory levels as of a specific date and return items that are below their minimum stock level.
 
+    This function compares the current stock of each item against its defined minimum stock level
+    and identifies which items need to be reordered.
+
+    Args:
+        as_of_date (str): The date (inclusive) for checking inventory levels, in ISO format (YYYY-MM-DD).
+
+    Returns:
+        Dict[str, int]: A dictionary mapping item names to their current stock levels for items that are below minimum.
+    """
+    return get_all_inventory(as_of_date)
+
+@tool
+def check_delivery_date(order_date: str, quantity: int) -> str:
+    """
+    Tool function to check the estimated delivery date for a given order quantity and input date.
+
+    This function serves as a wrapper around the `get_supplier_delivery_date` utility, allowing it to be called
+    as a tool within an agentic system.
+
+    Args:
+        input_date (str): The starting date for the order in ISO format (YYYY-MM-DD).
+        quantity (int): The number of units being ordered.
+
+    Returns:
+        str: The estimated delivery date in ISO format (YYYY-MM-DD).
+    """
+    return get_supplier_delivery_date(order_date, quantity)
+
+@tool
+def has_sufficient_stock(item_name: str, required_quantity: int, as_of_date: str) -> bool:
+    """
+    Tool function to check if there is sufficient stock of a specific item to fulfill a request.
+
+    This function checks the current stock level of the specified item as of the given date and compares it
+    against the required quantity to determine if the request can be fulfilled.
+
+    Args:
+        item_name (str): The name of the item to check.
+        required_quantity (int): The quantity needed for the request.
+        as_of_date (str): The date (inclusive) for checking stock levels, in ISO format (YYYY-MM-DD).
+
+    Returns:
+        bool: True if there is sufficient stock to fulfill the request, False otherwise.
+    """
+    stock_info = get_stock_level(item_name, as_of_date)
+    current_stock = stock_info["current_stock"].iloc[0] if not stock_info.empty else 0
+    return current_stock >= required_quantity
 
 # Tools for quoting agent
+@tool
+def check_quote_history(search_terms: List[str]) -> List[Dict]:
+    """
+    Tool function to search historical quotes based on provided search terms.
 
+    This function allows an agent to query past quotes that match specific keywords in the original customer request
+    or the quote explanation. It serves as a wrapper around the `search_quote_history` utility function.
+
+    Args:
+        search_terms (List[str]): A list of keywords to search for in past quotes.
+
+    Returns:
+        List[Dict]: A list of matching quotes, each represented as a dictionary with relevant fields.
+    """
+    results = search_quote_history(search_terms)
+    return results[0] if results else None
 
 # Tools for ordering agent
+@tool
+def get_current_cash_balance(as_of_date: str) -> float:
+    """
+    Tool function to retrieve the current cash balance as of a specific date.
+
+    This function serves as a wrapper around the `get_cash_balance` utility, allowing it to be called
+    as a tool within an agentic system.
+
+    Args:
+        as_of_date (str): The date (inclusive) for which to retrieve the cash balance, in ISO format (YYYY-MM-DD).
+
+    Returns:
+        float: The current cash balance as of the given date.
+    """
+    return get_cash_balance(as_of_date)
+
+@tool
+def place_sales_order(item_name: str, quantity: int, price: float, transaction_date: str) -> int:
+    """
+    Tool function to record a sales transaction by creating a transaction in the database.
+    
+    This function serves as a wrapper around the `create_transaction` utility, allowing it to be called
+    as a tool within an agentic system.
+
+    Args:
+        item_name (str): The name of the item being sold.
+        quantity (int): The number of units being sold.
+        price (float): The total price for the sales transaction.
+        transaction_date (str): The date of the transaction in ISO format (YYYY-MM-DD).
+
+    Returns:
+        int: The ID of the newly created sales transaction.
+    """
+    return create_transaction(item_name, "sales", quantity, price, transaction_date)
+
+@tool
+def generate_financial_report(as_of_date: str) -> Dict:
+    """
+    Tool function to generate a financial report as of a specific date.
+
+    This function serves as a wrapper around the `generate_financial_report` utility, allowing it to be called
+    as a tool within an agentic system.
+
+    Args:
+        as_of_date (str): The date (inclusive) for which to generate the report, in ISO format (YYYY-MM-DD).
+
+    Returns:
+        Dict: A dictionary containing the financial report fields such as cash balance, inventory value, etc.
+    """
+    return generate_financial_report(as_of_date)
 
 
 # Set up your agents and create an orchestration agent that will manage them.
+class InventoryAgent(ToolCallingAgent):
+    def __init__(self, model):
+        super().__init__(
+            model=model, 
+            tools=[check_inventory_levels, check_delivery_date, has_sufficient_stock],
+            name="InventoryAgent",
+            description="Agent responsible for managing inventory levels, checking stock availability, and estimating delivery dates."
+        )
+
+class QuotingAgent(ToolCallingAgent):
+    def __init__(self, model, inventory_agent: InventoryAgent):
+        super().__init__(
+            model=model, 
+            tools=[check_quote_history],
+            name="QuotingAgent",
+            description="Agent responsible for generating quotes based on customer requests and historical quote data.",
+            managed_agents=[inventory_agent]
+        )
+    
+    def create_quote(self, order_details: Dict) -> Dict:
+        """
+        Creates a quote based on the provided order details. First checks historical quotes for similar requests, then if none is found, 
+        it generates a new quote if necessary.
+        """
+        response = self.run(
+            f"""You are a quoting agent for Munder Difflin. Your task is to generate a quote for a customer request based on the order details provided.
+            
+            Given the following order details: {json.dumps(order_details)}, accomplish the following steps:
+
+            Step 1. Search the quote history for any similar requests using the check_quote_history tool.
+            Use the check_quote_history tool one time by extracting relevant keywords from the order details, such as job type, event type, and order size.
+            If the result is valid, it will be a dictionary containing the original request, total amount, quote explanation, job type, order size, event type, and order date. If no similar quote is found, the result will be None.
+            Note the pricing if the result is valid, as you may use it to inform your quote generation in the next step, but do not return it yet.
+            Always use the check_quote_history tool first before attempting to generate a new quote, as historical quotes can provide valuable insights and help ensure consistency in pricing.
+            Always proceed to step 2 to verify stock availability and delivery timelines, even if a similar quote is found in the history, as inventory levels and supplier lead times can impact the feasibility of fulfilling the request.
+
+            Step 2. Check inventory levels and delivery timelines using the InventoryAgent, which has access to tools for checking current stock levels, minimum stock thresholds, and supplier delivery estimates.
+            Ask the inventory agent to check if there is sufficient stock to fulfill the request based on the order details, and to estimate the delivery date for any items that need to be ordered from the supplier.
+            Exact task instructions for the inventory agent:
+            - Extract the relevant item names and quantities from the order details.
+            - For each item, use the has_sufficient_stock tool to check if there is enough stock to fulfill the required quantity as of the request date.
+            - If any item does not have sufficient stock, use the check_delivery_date tool to estimate the delivery date for the required quantity of that item based on the request date.
+
+            Step 3. Based on the information gathered in steps 1 and 2, generate a quote for the customer request.
+            - If a similar quote was found in the history, use it as a reference for pricing, but adjust the quote as necessary based on current inventory availability and delivery timelines.
+            - If no similar quote was found, generate a new quote based on the order details, inventory availability, and delivery timelines.
+            - For each item in the order, use the stock availability and delivery information to determine if the item can be included in the quote, and if so, at what price (based on unit price and any applicable adjustments).
+            - Ensure that the total amount for the quote is calculated correctly based on the included items and their prices (total price for each item = unit price * quantity, and total quote amount = sum of total prices for included items).
+            - Provide a clear explanation for the quote, including any assumptions made, adjustments based on inventory or delivery constraints, and references to similar historical quotes if applicable.
+
+            Return the generated quote as a JSON dictionary containing 
+            - the request date
+            - the needed by date
+            - a list of items included in the quote with their names, quantities, unit prices, total prices, whether they are in stock, whether the order is fulfilled
+            - the total amount
+            - the quote explanation
+
+            The returned object should be a JSON dictionary and nothing else. Do not include any text outside of the JSON dictionary in your response.
+            
+            """
+        )
+        if isinstance(response, dict):
+            quote = response
+        else:
+            quote = json.loads(str(response))
+
+        return quote
+    
+    class OrderingAgent(ToolCallingAgent): 
+        def __init__(self, model):
+            super().__init__(
+                model=model, 
+                tools=[get_current_cash_balance, place_sales_order, generate_financial_report],
+                name="OrderingAgent",
+                description="Agent responsible for placing orders and managing financial transactions based on generated quotes and inventory status."
+            )
+
+        def place_order(self, quote: Dict) -> Dict[str, int]:
+            """
+            Places an order based on the provided quote. First checks the current cash balance to ensure sufficient funds, then records the sales transaction if the order can be fulfilled.
+            """
+            response = self.run(
+                f"""You are an ordering agent for Munder Difflin. Your task is to place an order based on a generated quote and manage the financial transactions accordingly.
+
+                Given the following quote details: {json.dumps(quote)}, accomplish the following steps:
+
+                Step 1. Check the current cash balance using the get_current_cash_balance tool to ensure that there are sufficient funds to cover the total amount of the quote.
+                - If the cash balance is sufficient to cover the total amount of the quote, proceed to step 2.
+                - If the cash balance is insufficient, return a response indicating that the order cannot be placed due to insufficient funds.
+
+                Step 2. For each item in the quote that is marked as fulfilled, use the place_sales_order tool to record a sales transaction in the database.
+                - Extract the item name, quantity, total price, and transaction date for each fulfilled item from the quote details.
+                - Call the place_sales_order tool with these details to create a transaction record for each item.
+
+                Step 3. After placing all sales orders for fulfilled items, generate an updated financial report using the generate_financial_report tool to reflect the new cash balance and inventory status after processing the order.
+
+                Return a JSON dictionary containing:
+                - A summary of which items were ordered and their quantities
+                - The total amount of the order
+                - The updated cash balance after placing the order
+                - Any items that could not be ordered due to insufficient stock or other constraints
+                - A clear explanation of any issues encountered during order placement (e.g., insufficient funds, stock shortages) and how they were handled.
+
+                The returned object should be a JSON dictionary and nothing else. Do not include any text outside of the JSON dictionary in your response.
+                """
+            )
+            if isinstance(response, dict):
+                order_response = response
+            else:
+                order_response = json.loads(str(response))
+
+            return order_response
+
 
 
 # Run your test scenarios by writing them here. Make sure to keep track of them.
