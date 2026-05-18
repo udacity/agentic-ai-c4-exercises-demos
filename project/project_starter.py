@@ -803,8 +803,48 @@ class OrderingAgent(ToolCallingAgent):
             model=model, 
             tools=[get_current_cash_balance, place_sales_order, generate_financial_report_tool],
             name="OrderingAgent",
-            description="Agent responsible for placing orders and managing financial transactions based on generated quotes and inventory status."
+            description="Agent responsible for extracting order details and placing orders based on generated quotes and inventory status."
         )
+
+    def extract_pertinent_order_details(self, request_details: Dict) -> Dict[str, int]:
+        response = self.run(
+            f"""You are an ordering agent for Munder Difflin. Your task is to extract the relevant order details from a customer request in order to inform the quoting and ordering process.
+
+            Given the following customer request details: {json.dumps(request_details)}, accomplish the following steps:
+
+            Extract the pertinent order details from the request, including:
+            1. request date
+            2. needed by date
+            3. a list of items with their names and quantities needed for the order, as well as the unit price for each item if available in the request details. 
+                This list should be structured as a list of dictionaries, where each dictionary contains the item name, quantity, and unit price
+                The item_name should check the {paper_supplies} variable for an exact match to ensure that the item is recognized and can be processed correctly. If an item in the request does not have an exact match in the paper_supplies list, it should be flagged as an unrecognized item and handled accordingly in the quoting and ordering process.
+                the quantity should be an integer representing the number of units needed for that item, and the unit price should be a float representing the price per unit for that item from the {paper_supplies} list if it is provided in the request details. If the unit price is not provided, it can be set to None or handled as needed in the quoting process.
+
+            Sample
+            {{
+                "request_date": "2025-04-02",
+                "needed_date": "2025-05-15",
+                "items": [
+                    {{
+                        "item_name": "Glossy paper",
+                        "quantity": 200,
+                        "unit_price": 0.2
+                    }},
+                    {{
+                        "item_name": "Cardstock",
+                        "quantity": 100,
+                        "unit_price": 0.15
+                    }}
+                ]
+            }}
+
+            The returned object should be a JSON dictionary and nothing else. Do not include any text outside of the JSON dictionary in your response.
+            """
+
+            return json.loads(str(response))
+        )
+
+
 
     def place_order(self, quote: Dict) -> Dict[str, int]:
         """
@@ -841,9 +881,46 @@ class OrderingAgent(ToolCallingAgent):
             order_response = json.loads(str(response))
 
         return order_response
+    
+class CommunicationsAgent(ToolCallingAgent):
+    def __init__(self, model) -> None:
+        super().__init__(
+            model=model, 
+            tools=[],
+            name="CommunicationsAgent",
+            description="Agent responsible for managing communications with customers, including sending information on orders whether they were completed or not."
+        )
+
+    def send_order_fulfillment_update(self, order_response: Dict) -> str:
+        """
+        Sends an update to the customer regarding the fulfillment status of their order based on the provided order response details.
+
+        This function is responsible for communicating the outcome of the order processing back to the customer, including which items were fulfilled, any issues encountered, and the final status of the order.
+
+        Args:
+            order_response (Dict): A dictionary containing details about the order fulfillment status, including the original quote, items ordered, total amount, updated cash balance, and any issues or explanations related to the order processing.
+
+        Returns:
+            str: A string containing the communication details that would be sent to the customer, including a summary of the order fulfillment status, any relevant explanations, and the final outcome of the order processing.
+        """
+        response = self.run(
+            f"""You are a communications agent for Munder Difflin. Your task is to manage communications with customers regarding the fulfillment status of their orders.
+
+            Given the following order response details: {json.dumps(order_response)}, accomplish the following steps:
+            Step 1. Analyze the order response details to determine the fulfillment status of the customer's order, including which items were fulfilled, any issues encountered during processing (e.g., insufficient funds, stock shortages), and the final outcome of the order.
+            Step 2. Craft a clear and informative communication message to the customer that summarizes the status of their order, including:
+            - A summary of which items were successfully ordered and their quantities
+            - The total amount of the order
+            - Any items that could not be ordered and the reasons why (e.g., insufficient stock)
+            - A clear explanation of any issues encountered during order processing and how they were handled.
+
+            There must not be any details of the order such as transaction ids or internal financial report details in the communication to the customer. The communication should be customer-friendly and focus on the outcome of their order and any relevant explanations they need to understand the status of their order.
+            """
+        )
+        return response
 
 class OrchestrationAgent(ToolCallingAgent):
-    def __init__(self, model, quoting_agent: QuotingAgent, ordering_agent: OrderingAgent) -> None:
+    def __init__(self, model, quoting_agent: QuotingAgent, ordering_agent: OrderingAgent, communications_agent: CommunicationsAgent) -> None:
         super().__init__(
             model=model,
             tools=[],
@@ -852,6 +929,7 @@ class OrchestrationAgent(ToolCallingAgent):
         )
         self.quoting_agent = quoting_agent
         self.ordering_agent = ordering_agent
+        self.communications_agent = communications_agent
 
     def process_request(self, request_details: Dict) -> Dict:
         """
@@ -863,17 +941,22 @@ class OrchestrationAgent(ToolCallingAgent):
         Returns:
             Dict: A dictionary containing the final outcome of processing the request, including the generated quote, order placement results, and any relevant explanations or issues encountered during the process.
         """
-        # Step 1: Generate a quote using the QuotingAgent
-        quote = self.quoting_agent.create_quote(request_details)
+        # Step 1: Extract relevant information from the request details to inform the quoting process
+        order: Dict[str, int] = self.ordering_agent.extract_pertinent_order_details(request_details)
+
+        # Step 1: Generate a quote using the QuotingAgent based on the extracted order details
+        quote = self.quoting_agent.create_quote(order)
 
         # Step 2: Place an order using the OrderingAgent based on the generated quote
         order_result = self.ordering_agent.place_order(quote)
 
         # Compile final response
-        final_response = {
+        semi_final_response = {
             "quote": quote,
             "order_result": order_result,
         }
+
+        final_response = self.communications_agent.send_order_fulfillment_update(semi_final_response)
 
         return final_response 
 
@@ -910,7 +993,8 @@ def run_test_scenarios():
     orchestrator = OrchestrationAgent(
         model=model, 
         quoting_agent=QuotingAgent(model=model, inventory_agent=InventoryAgent(model=model)),
-        ordering_agent=OrderingAgent(model=model)
+        ordering_agent=OrderingAgent(model=model),
+        communications_agent=CommunicationsAgent(model=model)
     )
 
     results = []
