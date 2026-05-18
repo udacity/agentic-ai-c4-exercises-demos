@@ -5,6 +5,7 @@ import numpy as np
 import os
 import time
 import ast
+import re
 
 from smolagents import OpenAIServerModel, tool, ToolCallingAgent
 from sqlalchemy.sql import text
@@ -890,6 +891,85 @@ class CommunicationsAgent(ToolCallingAgent):
             description="Agent responsible for managing communications with customers, including sending information on orders whether they were completed or not."
         )
 
+    def _sanitize_customer_communication(self, message: str) -> str:
+        """
+        Post-processing guardrail that removes sensitive financial and internal information
+        from customer communications before sending.
+        
+        This method implements regex-based filtering to prevent:
+        - Cash/account balances (e.g., "cash balance is $50,000" or "Your updated cash balance is $46,052.20")
+        - Transaction IDs (e.g., "Transaction ID: 12345")
+        - Internal step-by-step reasoning (e.g., "Step 1 Analysis:", "Step 2 Communication Message:")
+        - Dollar amounts in balance contexts
+        
+        Args:
+            message (str): The raw message from CommunicationsAgent
+            
+        Returns:
+            str: Sanitized message with sensitive information removed
+        """
+        sanitized = message
+        
+        # Pattern 1: Remove lines containing "cash balance" or "account balance" with any dollar amounts
+        # Matches: "cash balance is $50,000" or "Your updated cash balance is $46,052.20"
+        sanitized = re.sub(
+            r'.*\b(?:cash\s+balance|account\s+balance|updated\s+cash\s+balance).*?\$[\d,]+\.?\d*.*?\n?',
+            '',
+            sanitized,
+            flags=re.IGNORECASE
+        )
+        
+        # Pattern 2: Remove Transaction ID mentions
+        # Matches: "Transaction ID: 12345" or "transaction id: ABC123"
+        sanitized = re.sub(
+            r'.*\b(?:transaction\s+id|transaction\s+ID)[\s:]*[\w\-]*.*?\n?',
+            '',
+            sanitized,
+            flags=re.IGNORECASE
+        )
+        
+        # Pattern 3: Remove internal step-by-step reasoning markers
+        # Matches: "Step 1 Analysis:", "Step 2 Communication Message:", etc.
+        sanitized = re.sub(
+            r'^(?:Step\s+\d+\s+(?:Analysis|Communication|Reasoning|Message):?).*?$\n?',
+            '',
+            sanitized,
+            flags=re.MULTILINE | re.IGNORECASE
+        )
+        
+        # Pattern 4: Remove standalone lines that contain "Your updated" followed by balance-related terms
+        # Matches: "Your updated cash balance is $49,712.20"
+        sanitized = re.sub(
+            r'.*\byour\s+updated.*?(?:cash\s+balance|account\s+balance).*?\n?',
+            '',
+            sanitized,
+            flags=re.IGNORECASE
+        )
+        
+        # Pattern 5: Remove standalone lines with balance context dollar amounts
+        # Matches lines like: "Balance: $45,059.70" or "Cash: $51,000"
+        sanitized = re.sub(
+            r'^.*?(?:Balance|Cash|Account|Updated Balance)[\s:]*\$[\d,]+\.?\d*.*?$\n?',
+            '',
+            sanitized,
+            flags=re.MULTILINE | re.IGNORECASE
+        )
+        
+        # Pattern 6: Remove lines containing inventory report details
+        # Matches: "Inventory Value:", "Financial Report:", etc.
+        sanitized = re.sub(
+            r'.*\b(?:inventory\s+value|financial\s+report|cash\s+on\s+hand)[\s:]*.*?\n?',
+            '',
+            sanitized,
+            flags=re.IGNORECASE
+        )
+        
+        # Clean up extra blank lines that may have been left behind
+        sanitized = re.sub(r'\n\n\n+', '\n\n', sanitized)
+        sanitized = sanitized.strip()
+        
+        return sanitized
+
     def send_order_fulfillment_update(self, order_response: Dict) -> str:
         """
         Sends an update to the customer regarding the fulfillment status of their order based on the provided order response details.
@@ -905,18 +985,48 @@ class CommunicationsAgent(ToolCallingAgent):
         response = self.run(
             f"""You are a communications agent for Munder Difflin. Your task is to manage communications with customers regarding the fulfillment status of their orders.
 
+            CRITICAL GUARDRAILS - DO NOT INCLUDE IN CUSTOMER MESSAGE:
+            ========================================================
+            You MUST NOT include any of the following in your customer communication:
+            1. CASH BALANCES OR ACCOUNT BALANCES - Never mention "cash balance", "account balance", "updated balance", or "Your updated cash balance"
+            2. DOLLAR AMOUNTS related to company finances or balances - Do not include amounts like "$50,000" or "$46,052.20" in balance contexts
+            3. TRANSACTION IDs - Do not include "Transaction ID", "transaction id", or any transaction reference numbers
+            4. INTERNAL FINANCIAL DETAILS - Do not include cash on hand, inventory value, or other internal financial metrics
+            5. INTERNAL STEP-BY-STEP REASONING - Do not include "Step 1 Analysis", "Step 2 Communication", or other internal process steps
+            6. INTERNAL THOUGHT PROCESS - Do not show your reasoning or analysis steps to the customer
+
+            APPROVED INFORMATION TO INCLUDE:
+            ================================
+            You MAY include:
+            - Item names and quantities successfully ordered
+            - The TOTAL ORDER AMOUNT (e.g., "Your order total is $65.00") - this is customer-facing pricing
+            - Items that could not be ordered and WHY (e.g., "insufficient stock", "missing pricing data")
+            - Estimated delivery dates for out-of-stock items
+            - Clear, empathetic explanations of any order processing issues
+            - Professional next steps or recommendations
+
             Given the following order response details: {json.dumps(order_response)}, accomplish the following steps:
+
             Step 1. Analyze the order response details to determine the fulfillment status of the customer's order, including which items were fulfilled, any issues encountered during processing (e.g., insufficient funds, stock shortages), and the final outcome of the order.
+            
             Step 2. Craft a clear and informative communication message to the customer that summarizes the status of their order, including:
             - A summary of which items were successfully ordered and their quantities
-            - The total amount of the order
-            - Any items that could not be ordered and the reasons why (e.g., insufficient stock)
-            - A clear explanation of any issues encountered during order processing and how they were handled.
+            - The total amount of the order (customer-facing pricing only)
+            - Any items that could not be ordered and the reasons why (e.g., insufficient stock, item not in system)
+            - A clear explanation of any issues encountered during order processing and how they were handled
+            - Professional tone with appropriate empathy where needed
 
-            There must not be any details of the order such as transaction ids or internal financial report details in the communication to the customer. The communication should be customer-friendly and focus on the outcome of their order and any relevant explanations they need to understand the status of their order.
+            REMINDER: Ensure your final message does NOT contain any cash balances, account balances, transaction IDs, internal financial details, or internal reasoning steps. 
+            Focus ONLY on order status, items, and fulfillment information relevant to the customer.
+
+            Return ONLY the customer-facing message. Do not include any explanations, step-by-step analysis, or metadata. Just the message itself.
             """
         )
-        return response
+        
+        # Apply post-processing guardrail to remove any sensitive information that may have slipped through
+        sanitized_response = self._sanitize_customer_communication(response)
+        
+        return sanitized_response
 
 class OrchestrationAgent(ToolCallingAgent):
     def __init__(self, model, quoting_agent: QuotingAgent, ordering_agent: OrderingAgent, communications_agent: CommunicationsAgent) -> None:
