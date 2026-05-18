@@ -840,10 +840,9 @@ class OrderingAgent(ToolCallingAgent):
 
             The returned object should be a JSON dictionary and nothing else. Do not include any text outside of the JSON dictionary in your response.
             """
-
-            return json.loads(str(response))
         )
 
+        return response
 
 
     def place_order(self, quote: Dict) -> Dict[str, int]:
