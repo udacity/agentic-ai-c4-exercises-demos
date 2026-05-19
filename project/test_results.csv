@@ -1,337 +1,341 @@
 request_id,request_date,cash_balance,inventory_value,response
 1,2025-04-01,45124.7,4875.3,"Dear Customer,
 
-Thank you for your order. We are pleased to inform you that the following items have been successfully ordered and will be shipped immediately:
+We are pleased to inform you that your order has been successfully fulfilled:
 
 - Glossy paper: 200 sheets
 - Cardstock: 100 sheets
 - Colored paper: 100 sheets
 
-Your total order amount is $65.00.
+Your order total is $65.00. 
 
-If you have any further questions or need assistance, please feel free to reach out to us.
+Thank you for choosing Munder Difflin! If you have any further questions or need assistance, please don't hesitate to reach out.
 
 Best regards,
 Munder Difflin"
 2,2025-04-03,45124.7,4875.3,"Dear Customer,
 
-We regret to inform you that all items in your recent order are currently out of stock. Below is the status of your order:
+Thank you for your order. Unfortunately, all requested items are currently out of stock. The items affected are:
 
-**Items Out of Stock:**
-- Poster paper: 500 sheets (Estimated delivery: April 7, 2025)
-- Party streamers: 300 units (Estimated delivery: April 7, 2025)
-- Balloons: 200 units (Estimated delivery: April 7, 2025)
+- Poster paper (500 units)
+- Party streamers (300 units)
+- Balloons (200 units)
 
-Unfortunately, we could not fulfill your order as none of the requested items have sufficient stock at this time. Therefore, no amounts were charged.
+We expect to replenish our stock, and these items can be reordered with an estimated delivery date of April 7, 2025. Early ordering is recommended to ensure availability before your needed date of April 15, 2025.
 
-Thank you for your understanding, and we appreciate your patience as we work to replenish our stock. If you have any questions or need further assistance, feel free to reach out.
+Your total order amount is $140.00 for the items requested.
+
+We apologize for any inconvenience this may cause and appreciate your understanding.
 
 Best regards,
-Munder Difflin Team"
-3,2025-04-04,45624.7,4375.3,"Dear Customer,
+Your Munder Difflin Team"
+3,2025-04-04,45124.7,4875.3,"Dear Customer,
 
-Thank you for your order. Unfortunately, we were unable to fulfill any items at this time due to insufficient stock. Here is the status of your order:
+Thank you for your order. We regret to inform you that all requested items are currently out of stock:
 
-**Items that are currently out of stock:**
-- A4 paper (Quantity: 10,000) - Estimated delivery: April 11, 2025
-- A3 paper (Quantity: 5,000) - Estimated delivery: April 8, 2025
-- Printer paper (Quantity: 500) - Estimated delivery: April 11, 2025
+- A4 paper: 10,000 units 
+- A3 paper: 5,000 units 
+- Printer paper: 500 units
 
-We understand the importance of these items and are working to secure additional stock. Your total order amount is $500.00, but no charges have been made yet as all requested items are out of stock.
+Estimated delivery dates for these items are as follows:
+- Printer paper: April 8, 2025
+- A4 paper and A3 paper: April 11, 2025
+
+Unfortunately, these items cannot be charged to your account at this time since they are out of stock.
 
 We appreciate your understanding and patience. If you have any questions or need further assistance, please feel free to reach out.
 
 Best regards,
 Munder Difflin"
-4,2025-04-05,45624.7,4375.3,"Dear Customer,
+4,2025-04-05,45124.7,4875.3,"Your order could not be fulfilled due to insufficient stock. Unfortunately, we are unable to process any orders at this time. Please feel free to reach out if you need assistance or have any questions. Thank you for your understanding."
+5,2025-04-05,45504.7,4495.3,"Dear Customer,
 
-Thank you for your order. Here is the status of your items:
-
-- **Items Fulfilled:**
-  (No items were successfully fulfilled at this time.)
-
-- **Out of Stock Items:**
-  - Cardstock: 500 sheets (currently out of stock, can be ordered from supplier. Estimated delivery: April 9, 2025)
-  - A4 paper: 250 sheets (currently out of stock, can be ordered from supplier. Estimated delivery: April 9, 2025)
-
-- **Items Not Fulfilled:**
-  (No items could not be fulfilled.)
-
-Your order total is $0, as the items are not available for immediate shipment.
-
-We appreciate your understanding and patience during this time. Please let us know if you have any questions or need further assistance.
-
-Best regards,
-Munder Difflin"
-5,2025-04-05,45719.7,4280.3,"Dear Customer,
-
-Thank you for your order. We are pleased to inform you that the following items have been successfully ordered and are ready to be shipped:
+We are pleased to inform you that your order has been successfully fulfilled. The following items have been ordered and are set to be shipped:
 
 - Colored paper: 500 units
 - Cardstock: 300 units
 
-Total order amount is $95.00.
+Both items are scheduled for delivery on April 9, 2025.
 
-Additionally, please note that the Decorative adhesive tape (washi tape) is currently out of stock and cannot be delivered at this time. We expect to have it available by April 9, 2025.
+Please note that the following item is currently out of stock:
+- Decorative adhesive tape (washi tape): 200 units
 
-Thank you for your understanding. If you have any further questions or need assistance, please feel free to reach out.
+Unfortunately, this item cannot be fulfilled at this time.
 
-Best regards,
-Munder Difflin Customer Service"
-6,2025-04-06,45719.7,4280.3,"Dear Customer,
-
-Thank you for your order with Munder Difflin. We regret to inform you that all items in your order are currently out of stock and need to be reordered. 
-
-The following items are out of stock:
-- Construction paper (500 sheets): Insufficient stock, needs to be reordered. Estimated delivery: April 10, 2025.
-- White printer paper (300 sheets): Insufficient stock, needs to be reordered. Estimated delivery: April 10, 2025.
-- Cardstock (200 sheets): Insufficient stock, needs to be reordered. Estimated delivery: April 10, 2025.
-
-Unfortunately, as all items could not be fulfilled at this time, no charges have been made to your account for this order. We appreciate your understanding and patience in this matter. 
-
-If you have any further questions or if we can assist you with anything else, please do not hesitate to reach out.
-
-Best regards,
-Munder Difflin Customer Service"
-7,2025-04-07,48119.7,1880.2999999999995,"Dear Customer,
-
-We are pleased to inform you about the status of your recent order:
-
-**Successfully Ordered:**
-- Glossy paper: 500 units  
-- Large poster paper (24x36 inches): 300 units
-
-**Out of Stock:**
-- Matte paper: 1000 units. Estimated delivery: April 11, 2025.
-- Heavyweight paper: 200 units. Estimated delivery: April 8, 2025.
-
-Your total order amount is $400.00.
+Your order total is $95.00.
 
 Thank you for choosing Munder Difflin. If you have any questions or need further assistance, feel free to reach out.
 
 Best regards,
-Munder Difflin Customer Service"
-8,2025-04-07,49559.7,1280.3,"Dear Customer,
+The Munder Difflin Team"
+6,2025-04-06,45749.7,4285.3,"Dear Customer,
 
-Thank you for your recent order!
+Thank you for your order. 
 
-**Items Successfully Ordered:**  
-All items in your order are currently out of stock, and as such, no items have been shipped yet.
+Unfortunately, all items in your order are currently out of stock:
+- Construction paper: 500 sheets
+- Standard copy paper: 300 sheets
+- Cardstock: 200 sheets
 
-**Items Currently Out of Stock:**  
-- Glossy paper (500 sheets) - Estimated delivery: April 11, 2025  
-- Matte paper (1000 sheets) - Estimated delivery: April 11, 2025  
-- Colored paper (2000 sheets) - Estimated delivery: April 14, 2025  
-- Recycled paper (3000 sheets) - Estimated delivery: April 14, 2025  
+We are in the process of ordering these items for you, and they are expected to be available by April 10, 2025.
 
-**Next Steps:**  
-Please note that your items need to be ordered promptly to meet the requested delivery window.
+Please note that no charges have been made to your account as these items are out of stock. 
 
-Thank you for your understanding, and we appreciate your patience.
+Your total order amount is $65.00.
 
-Sincerely,  
-Munder Difflin"
-9,2025-04-07,49559.7,1280.3,"Dear Customer,
-
-Thank you for your order. We have processed your request, and here is the status of the items you ordered:
-
-**Items Ordered:**
-- Unfortunately, there were no items successfully fulfilled at this time.
-
-**Items Out of Stock:**
-- A4 paper (Quantity: 200) is currently out of stock. Estimated delivery: April 11, 2025.
-- Glossy paper (Quantity: 100) is currently out of stock. Estimated delivery: April 8, 2025.
-- Envelopes (Quantity: 50) are currently out of stock. Estimated delivery: April 8, 2025.
-
-We appreciate your understanding and patience as we work to fulfill your order. The total amount for your order is not applicable as no items were fulfilled. If you have any further questions or need assistance, please don't hesitate to reach out.
-
-Best regards,
-Munder Difflin Communications Team"
-13,2025-04-08,49559.7,1280.3,"Dear Customer,
-
-Thank you for your order placed on April 8, 2025.
-
-Unfortunately, the following items are currently out of stock:
-- A4 paper (Quantity: 500)
-- Cardstock (Quantity: 200) 
-
-The estimated delivery date for both items is April 12, 2025. We appreciate your understanding as we work to reorder these items for you.
-
-Please note that no items have been charged at this time, as we are awaiting stock availability.
-
-Your order total is $0.00, as there are no fulfilled items at this moment.
-
-Thank you for your patience, and we will keep you updated on your order status.
+We appreciate your understanding and patience. If you have any further questions, feel free to reach out.
 
 Best regards,
 Munder Difflin Customer Service"
-12,2025-04-08,49559.7,1280.3,"Dear Customer,
+7,2025-04-07,46349.7,3685.2999999999997,"Dear Customer,
 
-Thank you for your order. We regret to inform you that all the items in your order are currently out of stock.
+We are pleased to inform you that your order has been processed:
 
-**Out of Stock Items:**
-- Cardstock: 200 sheets. Estimated delivery: April 12, 2025.
-- Standard printer paper: 500 sheets. Estimated delivery: April 12, 2025.
-- Paper napkins: 100 units. Estimated delivery: April 9, 2025.
+**Successfully ordered:** 
+- Large poster paper (24x36 inches): 300 sheets
 
-Unfortunately, these items cannot be charged to your account at this time due to their unavailability.
+**Currently out of stock:** 
+- Glossy paper: 500 sheets
+- Matte paper: 1000 sheets
+- Heavyweight paper: 200 sheets
 
-We appreciate your understanding and apologize for any inconvenience this may cause. If you have any questions or need further assistance, please feel free to reach out to us.
+These out-of-stock items are expected to be available for delivery by April 11, 2025.
 
-Sincerely,
-Munder Difflin"
-10,2025-04-08,49559.7,1280.3,"Dear Customer,
+Your order total is $300.00.
 
-Thank you for your recent order. Unfortunately, we were unable to fulfill any items at this time. Here is the status of your order:
-
-**Items out of stock:**  
-- Glossy paper: 500 sheets (Estimated delivery: April 12, 2025)  
-- Cardstock: 300 sheets (Estimated delivery: April 12, 2025)  
-
-Both items are currently out of stock and will need to be reordered. As their estimated delivery date does not meet your needed date of April 15, 2025, we are unable to process this request further at this time.
-
-Your order total is $0.00 as no charges can be applied for out-of-stock items.
-
-We appreciate your understanding and patience. If you have any questions or need further assistance, please feel free to reach out.
+Thank you for choosing Munder Difflin. If you have any further questions, please feel free to reach out.
 
 Best regards,
-Munder Difflin Customer Service"
-11,2025-04-08,49559.7,1280.3,"Dear Customer,
+The Munder Difflin Team"
+8,2025-04-07,47069.7,3385.2999999999997,"Dear Customer,
 
-We regret to inform you that both of the items you ordered are currently out of stock. Here are the details of your order:
+Thank you for your order!
 
-**Out of Stock Items:**
-- Glossy paper: 500 sheets. Estimated delivery: April 12, 2025.
-- Matte paper: 300 sheets. Estimated delivery: April 12, 2025.
+**Successfully Fulfilled Items:**
+- Colored paper: 2000 sheets
+- Recycled paper: 3000 sheets
+- Matte paper: 1000 sheets
+- Glossy paper: 500 sheets
 
-Unfortunately, we are unable to fulfill these items as they are not available at this time.
+**Items Currently Out of Stock:**
+- Glossy paper: 500 sheets
+- Matte paper: 1000 sheets
+- Colored paper: 2000 sheets
+- Recycled paper: 3000 sheets
 
-Your total order amount is $0.00, as no items were fulfilled.
+Your order total is $720.00.
 
-Thank you for your understanding, and we appreciate your patience. Please feel free to reach out if you have any further questions.
-
-Best regards,
-Munder Difflin Customer Service"
-14,2025-04-09,49559.7,1280.3,"Dear Customer,
-
-Thank you for your order. We appreciate your patience as we process your request. Here is the status of your order:
-
-**Items Successfully Fulfilled:**
-No items were fulfilled at this time.
-
-**Items Out of Stock:**
-- A4 paper (Quantity: 5000) is currently out of stock. Estimated delivery: April 16, 2025.
-- Poster paper (Quantity: 2000) is currently out of stock. Estimated delivery: April 16, 2025.
-- Cardstock (Quantity: 500) is currently out of stock. Estimated delivery: April 13, 2025.
-
-**Items that Could Not Be Fulfilled:**
-- A4 paper could not be fulfilled due to insufficient stock.
-- Poster paper could not be fulfilled due to insufficient stock.
-- Cardstock could not be fulfilled due to insufficient stock.
-
-Your total order amount is $0.00.
-
-Please feel free to reach out if you have any questions or need further assistance.
+We appreciate your understanding, and thank you for choosing Munder Difflin!
 
 Best regards,
-Munder Difflin Team"
-15,2025-04-12,49559.7,1280.3,"Dear Customer,
+Munder Difflin Customer Support"
+9,2025-04-07,47189.7,3265.2999999999997,"Dear Customer,
 
-Thank you for your order. Here is the status of your items:
+Thank you for your order. We are pleased to inform you that the following items were successfully ordered and will be shipped:
+- A4 paper: 200 units
+- Glossy paper: 100 units
 
-**Items Out of Stock:**
-- A4 paper: 10,000 units; will be delivered by April 16, 2025.
-- Colored paper: 5,000 units; will be delivered by April 19, 2025.
-- Cardstock: 500 units; will be delivered by April 19, 2025.
+However, please note that Kraft paper is currently out of stock and needs to be reordered. Unfortunately, it could not be fulfilled in the required timeframe.
 
-Unfortunately, all items are currently out of stock. No charges will be made to your account at this time. We appreciate your understanding and patience, and we will fulfill your order as soon as the items are available.
-
-Your total order amount is $1,075.00.
-
-If you have any questions or need further assistance, please feel free to reach out.
-
-Best regards,
-Munder Difflin"
-16,2025-04-13,49559.7,1155.3,"Dear Customer,
-
-Thank you for your order on April 13, 2025. Unfortunately, all items in your order are currently out of stock and need to be reordered:
-
-- A4 paper: Insufficient stock, will be reordered. Estimated delivery: April 17, 2025.
-- Construction paper: Insufficient stock, will be reordered. Estimated delivery: April 17, 2025.
-- Poster paper: Insufficient stock, will be reordered. Estimated delivery: April 14, 2025.
-
-No charges will be applied at this time for these items. We appreciate your patience and understanding as we work to fulfill your order.
-
-Best regards,
-Munder Difflin Customer Service"
-17,2025-04-14,50099.7,855.3,"Dear Customer,
-
-Thank you for your order placed on April 14, 2025. We appreciate your patience as we process your request.
-
-Unfortunately, none of the items in your order could be fulfilled as they are currently out of stock. Here are the details:
-
-1. **Items Out of Stock**:
-   - A4 paper (1000 pcs) - Currently out of stock. Estimated delivery: [Please enter a valid future date]
-   - Colored paper (500 pcs) - Currently out of stock. Estimated delivery: [Please enter a valid future date]
-   - Paper napkins (2000 pcs) - Currently out of stock. Estimated delivery: [Please enter a valid future date]
-   - Paper cups (1000 pcs) - Currently out of stock. Estimated delivery: [Please enter a valid future date]
-   - Paper plates (500 pcs) - Currently out of stock. Estimated delivery: [Please enter a valid future date]
-
-Unfortunately, we are unable to charge you for any of these items until they are available for fulfillment. 
-
-If you have any further questions or need assistance, please feel free to reach out.
+Your order total is $30.00.
 
 Thank you for your understanding.
 
 Best regards,
+Munder Difflin Customer Support"
+13,2025-04-08,47189.7,3265.2999999999997,"Dear Customer,
+
+Thank you for your order. Here is the status of the items you requested:
+
+**Successfully Ordered:**
+- None
+
+**Currently Out of Stock:**
+- A4 paper (Quantity: 500) 
+- Cardstock (Quantity: 200) 
+
+Both items are currently out of stock and will need to be ordered from the supplier. The estimated delivery date for both items is April 12, 2025.
+
+Unfortunately, due to this delay, we will not be able to fulfill your order by the necessary date of April 10, 2025. We apologize for any inconvenience this may cause.
+
+Your order total is $0.00 as no charges have been made at this time. 
+
+If you have any further questions or need assistance, please do not hesitate to reach out.
+
+Best regards,
+Munder Difflin Customer Service"
+12,2025-04-08,47189.7,3265.2999999999997,"Dear Customer,
+
+Thank you for your order. Unfortunately, all the requested items are currently out of stock and cannot be fulfilled:
+
+- Colored paper: 200 units
+- Standard copy paper: 500 units
+- Paper napkins: 100 units
+
+We apologize for the inconvenience. The estimated delivery dates for the items are:
+- Paper napkins: April 9, 2025
+- Colored paper: April 12, 2025
+- Standard copy paper: April 12, 2025
+
+Since all items are out of stock, no charges will be made at this time.
+
+Thank you for your understanding. Please feel free to reach out if you have any further questions or need assistance.
+
+Best regards,
+Munder Difflin Customer Service"
+10,2025-04-08,47334.7,3120.2999999999997,"Dear Customer,
+
+Thank you for your order placed on April 8, 2025. We have successfully processed the following items:
+
+- Glossy paper: 500 units
+- Cardstock: 300 units
+
+Unfortunately, both items are currently out of stock but have been ordered and will be delivered on April 12, 2025.
+
+Your order total is $145.00.
+
+Thank you for your understanding, and we appreciate your business.
+
+Best regards,
 Munder Difflin"
-18,2025-04-14,51044.7,190.2999999999999,"Dear Customer,
+11,2025-04-08,47642.7,2920.2999999999997,"Thank you for your order! 
 
-Thank you for your order. We regret to inform you that all of the items you requested are currently out of stock. Here are the details:
+Unfortunately, both items are currently out of stock:
+- Glossy paper: 500 sheets
+- Matte paper: 300 sheets
 
-**Items Out of Stock:**
-- Cardstock (Quantity: 500)
-- Standard copy paper (Quantity: 1000)
-- Colored paper (Quantity: 200)
+We expect these items to be delivered to you by April 12, 2025, to ensure you receive your supplies on time for your upcoming deadline.
 
-All items are expected to be restocked and shipped by April 18, 2025.
+Your total order amount is $154.00."
+14,2025-04-09,49292.7,2270.2999999999993,"Dear Customer,
 
-We appreciate your understanding and thank you for your patience. If you have any questions or need further assistance, please don't hesitate to reach out.
+Thank you for your recent order.
 
-Best regards,
-Munder Difflin Customer Service"
-19,2025-04-15,51044.7,190.2999999999999,"Dear Customer,
+Unfortunately, all items you requested are currently out of stock:
+- A4 paper: 5000 units (Estimated delivery: April 13, 2025)
+- Poster paper: 2000 units (Estimated delivery: April 16, 2025)
+- Cardstock: 500 units (Estimated delivery: April 16, 2025)
 
-Thank you for your order. Here is the status of your order:
+As these items are not available to fulfill your order by the needed date of April 15, 2025, we regret to inform you that your order cannot be fulfilled at this time due to insufficient stock.
 
-**Items Ordered:**
-Unfortunately, no items were successfully fulfilled at this time.
+Your total order amount is $0.00, as no charges have been made.
 
-**Items Out of Stock:**
-- Glossy paper: 2000 units (currently out of stock, estimated delivery date: April 22, 2025)
-- Matte paper: 1500 units (currently out of stock, estimated delivery date: April 22, 2025)
-- Cardstock: 1000 units (currently out of stock, estimated delivery date: April 19, 2025)
-
-We are working to fulfill these items as soon as possible and appreciate your understanding. 
-
-If you have any questions or need further assistance, please feel free to reach out.
+We apologize for any inconvenience this may cause and appreciate your understanding. Please feel free to reach out if you have any questions or need further assistance.
 
 Best regards,
 Munder Difflin Customer Service"
-20,2025-04-17,52544.7,190.2999999999999,"Dear Customer,
+15,2025-04-12,49292.7,2270.2999999999993,"Dear Customer,
 
-Thank you for your recent order!
+Thank you for your order. Unfortunately, we are unable to fulfill any items at this time.
+
+- **Items Currently Out of Stock:**
+  - A4 paper: 10,000 sheets
+  - Colored paper: 5,000 sheets
+  - Cardstock: 500 sheets
+
+The expected delivery dates for the out-of-stock items are as follows:
+- A4 paper and Colored paper are expected to arrive on April 19, 2025.
+- Cardstock is expected to arrive sooner on April 16, 2025.
+
+Due to this situation, we are unable to charge you for your order at this time. If you have any questions or need further assistance, please don’t hesitate to reach out.
+
+Thank you for your understanding.
+
+Best regards,
+Munder Difflin Customer Service"
+16,2025-04-13,49548.7,2170.2999999999993,"Dear Customer,
+
+Thank you for your order. We want to inform you about the status of your requested items:
+
+**Items Currently Out of Stock:**
+- A4 paper (500 qty)
+- Construction paper (200 qty)
+- Poster paper (100 qty)
+
+Unfortunately, these items are currently out of stock and cannot be fulfilled by the needed date of April 15, 2025.
+
+The total order amount for your fulfilled items is $0.00 as nothing could be charged.
+
+We appreciate your understanding and patience in this matter.
+
+Best regards,
+Munder Difflin Customer Service"
+17,2025-04-14,49598.7,2120.2999999999993,"Dear Customer,
+
+Thank you for your recent order. Here is the status of your order:
+
+**Items Successfully Ordered and Fulfilled:**
+- Paper plates: 500 pieces
+
+**Items Currently Out of Stock:**
+- A4 paper: 1000 pieces
+- Colored paper: 500 pieces
+- Paper napkins: 2000 pieces
+- Paper cups: 1000 pieces
+
+**Total Order Amount:** Your order total is $50.00.
+
+We appreciate your understanding and look forward to fulfilling your out-of-stock items soon. If you have any questions or need further assistance, please feel free to reach out.
+
+Best regards,
+Munder Difflin"
+18,2025-04-14,49598.7,2120.2999999999993,"Dear Customer,
+
+Thank you for your order placed on April 14, 2025. We regret to inform you that all items you requested are currently out of stock and require reordering. 
+
+- Items currently out of stock:
+  - Cardstock: 500 sheets
+  - Standard copy paper: 1000 sheets
+  - Bright-colored paper: 200 sheets
+
+The estimated delivery date for all items is April 18, 2025.
+
+As a result, no charges have been made for this order at this time. We will notify you as soon as your items are back in stock and ready to ship.
+
+Thank you for your understanding.
+
+Best regards,
+Munder Difflin Team"
+19,2025-04-15,49898.7,1820.2999999999995,"Dear Customer,
+
+Thank you for your order. Here's the status of your items:
 
 **Successfully Ordered and Fulfilled:**  
-- Flyers: 5000 units
+- Cardstock: 1000 units
 
-**Out of Stock:**  
-- Posters: 2000 units. Estimated delivery: 2025-04-24.  
-- Tickets: 10000 units. Estimated delivery: 2025-04-24.
+**Currently Out of Stock:**  
+- Glossy paper: 2000 units  
+- Matte paper: 1500 units  
 
-Your order total is $750.00. 
+Unfortunately, none of the out-of-stock items can be fulfilled by your needed date of April 20, 2025.
 
-We appreciate your understanding and patience as we work to fulfill your needs. If you have any questions, please feel free to reach out.
+Your order total is $150. 
+
+We appreciate your understanding and are here to assist you with any further questions.
+
+Best regards,
+Munder Difflin"
+20,2025-04-17,49898.7,1820.2999999999995,"Dear Customer,
+
+Thank you for your order placed on April 17, 2025. Here is the status of your items:
+
+Section 1: 
+- Unfortunately, there are no items that were fulfilled at this time. 
+
+Section 2: 
+- Flyers, quantity: 5000, are currently out of stock. 
+- Posters, quantity: 2000, are currently out of stock. 
+- Tickets, quantity: 10000, are currently out of stock.
+
+Section 3: 
+All requested items are currently out of stock and thus, cannot be charged. 
+
+Section 4: 
+Your order total is $0.00 as no items have been charged.
+
+We understand how important these items are for you and we recommend placing your order promptly as the estimated delivery date for all items is April 24, 2025.
+
+Thank you for your understanding.
 
 Best regards,
 Munder Difflin"

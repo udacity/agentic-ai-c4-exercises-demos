@@ -869,25 +869,6 @@ class OrderingAgent(ToolCallingAgent):
         CRITICAL: Only charges for items marked as "fulfilled": true. Items with "fulfilled": false 
         (out of stock, pending supplier delivery) are NOT charged at this time.
         """
-        # # GUARDRAIL: Check if there are sufficient funds before attempting to place order
-        # fulfilled_items = [item for item in quote.get('items', []) if item.get('fulfilled', False)]
-        # total_cost = sum(item.get('unit_price', 0) * item.get('quantity', 0) for item in fulfilled_items)
-        
-        # # Get current cash balance as of the quote's request date
-        # request_date = quote.get('request_date', datetime.now().strftime('%Y-%m-%d'))
-        # current_balance = get_current_cash_balance(request_date)
-        
-        # # If insufficient funds for fulfilled items, return error immediately
-        # if current_balance < total_cost:
-        #     return {
-        #         "items_fulfilled": [],
-        #         "items_out_of_stock": [],
-        #         "items_cannot_fulfill": [item['item_name'] for item in fulfilled_items],
-        #         "amount_charged": 0,
-        #         "updated_cash_balance": current_balance,
-        #         "explanation": f"Order cannot be placed: Insufficient funds. Required: ${total_cost:.2f}, Available: ${current_balance:.2f}",
-        #         "error": "INSUFFICIENT_FUNDS"
-        #     }
         
         response = self.run(
             f"""You are an ordering agent for Munder Difflin. Your task is to place an order based on a generated quote and manage the financial transactions accordingly.
@@ -921,7 +902,7 @@ class OrderingAgent(ToolCallingAgent):
             - Use get_current_cash_balance tool to check the current cash balance.
             - Compare the current cash balance to the total amount calculated for FULFILLED ITEMS ONLY.
             - If the cash balance is sufficient to cover the fulfilled items, proceed to step 3.
-            - If the cash balance is insufficient, return a response indicating the order cannot be placed due to insufficient funds and CRITICAL: Do NOT attempt to place any sales orders if funds are insufficient.
+            - If the cash balance is insufficient, return a response indicating the order cannot be placed due to insufficient funds and CRITICAL: Do NOT attempt to place any sales orders if funds are insufficient or if fulfilling the order would result in a negative cash balance.
 
             Step 3. RECORD SALES FOR FULFILLED ITEMS ONLY:
             - For EACH item where "fulfilled": true, call the place_sales_order tool with:
@@ -1086,16 +1067,23 @@ class CommunicationsAgent(ToolCallingAgent):
             - FULFILLED: Item is in stock and will be shipped. Say: "Successfully ordered: [item] [qty]"
             - OUT_OF_STOCK: Item is not available now. Say: "[Item] is currently out of stock. Estimated delivery: [DATE]"
             - CANNOT_FULFILL: Item cannot be ordered at all. Say: "[Item] could not be fulfilled due to [REASON]"
+            If an item is fulfilled, do NOT say it is out of stock. If an item is out of stock, do NOT say it is fulfilled. If an item cannot be fulfilled, do NOT say it is fulfilled or out of stock. Avoid any language that mixes these categories for the same item.
 
             RULE 2: Delivery dates must be REALISTIC FUTURE dates from the order date.
             - Check all delivery dates in the order response. They MUST be in the future relative to the order date.
             - If a delivery date appears to be in the past (e.g., October 2023 for an order from April 2025), this is an ERROR. Do NOT use that date.
             - Only include delivery dates that are valid future dates (today or later).
+            - Do not ask the customer for input on past dates; simply exclude any past-dated delivery information from the message and focus on valid future dates.
 
             RULE 3: Cash impact reflects fulfillment only.
             - If items are "successfully ordered" and charged to the customer, the cash balance should show a deduction.
             - If items are "out of stock", they should NOT be charged yet (no cash deduction).
             - Verify consistency: fulfilled items = cash deduction, out-of-stock items = no deduction.
+            - If there is a mismatch (e.g., cash balance shows deduction but item is out of stock), this is an ERROR. Do NOT communicate that to the customer; instead, ensure your message reflects the correct fulfillment and charging status.
+            - If the order cannot be fulfilled due to insufficient funds, communicate that clearly without mentioning specific cash balances.
+            - If the order is fulfilled, communicate the successful charge without mentioning specific cash balances.
+            - An order cannot have an charged amount if charges have not been made. Make sure to use language like "quote value" or "total amount for fulfilled items" rather than "charged amount" if the order is not actually charged yet.
+            - For orders that have a delivery date in the future, do not say "charged" if the charge has not been processed yet. Instead, say "Your order for [item] [qty] is confirmed and will be charged when it ships."
 
             CRITICAL GUARDRAILS - DO NOT INCLUDE IN CUSTOMER MESSAGE:
             ========================================================
@@ -1106,6 +1094,7 @@ class CommunicationsAgent(ToolCallingAgent):
             4. INTERNAL FINANCIAL DETAILS - Do not include cash on hand, inventory value, or other internal financial metrics
             5. INTERNAL STEP-BY-STEP REASONING - Do not include "Step 1 Analysis", "Step 2 Communication", or other internal process steps
             6. INTERNAL THOUGHT PROCESS - Do not show your reasoning or analysis steps to the customer
+            7. PAST-DATED DELIVERY DATES - Do not include delivery dates that are in the past relative to the order date (e.g., October 2023 for an order from April 2025), and do not ask for input from the customer about past dates, just fail gracefully by excluding those dates from the message.
 
             APPROVED INFORMATION TO INCLUDE:
             ================================
@@ -1125,7 +1114,7 @@ class CommunicationsAgent(ToolCallingAgent):
             
             Step 2. Craft a clear and informative communication message to the customer that summarizes the status of their order:
             - Section 1: Clearly list items that were successfully ordered and immediately fulfilled with quantities
-            - Section 2: If applicable, list items that are out of stock with realistic future delivery dates
+            - Section 2: If applicable, list items that are out of stock. Do NOT say these items are "charged" or "successfully ordered". Instead, say they are "currently out of stock". Do not include any delivery date information for out-of-stock items.
             - Section 3: If applicable, list items that could not be fulfilled and explain why
             - Section 4: Include the total order amount (only for fulfilled items charged to customer)
             - CRITICAL: Never mix "successfully ordered" and "out of stock" language for the same item in the same sentence/paragraph.
