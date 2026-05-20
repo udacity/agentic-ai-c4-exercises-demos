@@ -781,16 +781,21 @@ class QuotingAgent(ToolCallingAgent):
 
             Step 3. Based on the information gathered in steps 1 and 2, generate a quote for the customer request.
             CRITICAL LOGIC: Each item in the order must fall into EXACTLY ONE of these mutually exclusive categories:
-            - FULFILLED: Item is in stock. Set "is_in_stock": true, "fulfilled": true, "delivery_date": today or request_date
-            - OUT_OF_STOCK_WITH_DELIVERY: Item is out of stock but can be ordered. Set "is_in_stock": false, "fulfilled": false, "delivery_date": calculated supplier delivery date (MUST be in the future from request date)
-            - CANNOT_FULFILL: Item cannot be fulfilled at all. Set "is_in_stock": false, "fulfilled": false, "delivery_date": null, "reason": explanation
+            - FULFILLED: Item is in stock. Set "is_in_stock": true, "fulfilled": true, "delivery_date": null or today's date
+            - OUT_OF_STOCK_WITH_DELIVERY: Item is out of stock but exists in catalog and can be ordered. Set "is_in_stock": false, "fulfilled": false, "delivery_date": calculated supplier delivery date (MUST be in the future from request date)
+            - NOT_CARRIED: Item is not in our paper_supplies catalog. Set "is_in_stock": false, "fulfilled": false, "delivery_date": null, "reason": "[Item name] is not carried in our catalog"
+            - CANNOT_FULFILL: Item cannot be fulfilled for other reasons. Set "is_in_stock": false, "fulfilled": false, "delivery_date": null, "reason": explanation
             
-            An item CANNOT be in both "fulfilled" and "out of stock" states simultaneously. This is a logical error that must be avoided.
+            An item CANNOT be in multiple states simultaneously. This is a logical error that must be avoided.
+            Specifically:
+            - An item cannot be both "fulfilled" and "out of stock" 
+            - An item cannot be both "not_carried" and "in stock"
+            - An item cannot have a delivery date if it's not being ordered
 
             - If a similar quote was found in the history, use it as a reference for pricing, but adjust the quote as necessary based on current inventory availability and delivery timelines.
             - If no similar quote was found, generate a new quote based on the order details, inventory availability, and delivery timelines.
-            - For each item in the order, use the stock availability and delivery information to determine which category it falls into (FULFILLED, OUT_OF_STOCK_WITH_DELIVERY, or CANNOT_FULFILL).
-            - Ensure that the total amount for the quote is calculated correctly based on the included items and their prices (total price for each item = unit price * quantity, and total quote amount = sum of total prices for included items).
+            - For each item in the order, use the stock availability and delivery information to determine which category it falls into (FULFILLED, OUT_OF_STOCK_WITH_DELIVERY, NOT_CARRIED, or CANNOT_FULFILL).
+            - Ensure that the total amount for the quote is calculated correctly based on the included items and their prices (total price for each item = unit price * quantity, and total quote amount = sum of total prices for fulfilled items only).
             - Provide a clear explanation for the quote, including any assumptions made, adjustments based on inventory or delivery constraints, and references to similar historical quotes if applicable.
 
             Return the generated quote as a JSON dictionary containing:
@@ -799,13 +804,13 @@ class QuotingAgent(ToolCallingAgent):
             - a list of items with their fulfillment status:
               * item_name
               * quantity
-              * unit_price
+              * unit_price (or null if not in catalog)
               * total_price
               * is_in_stock: boolean
               * fulfilled: boolean (true ONLY if item is in stock and will be sent immediately)
-              * delivery_date: ISO date (YYYY-MM-DD) or null if cannot fulfill. MUST be in future if out of stock.
-              * reason: explanation if item cannot be fulfilled
-            - the total amount (sum of prices for items that can be fulfilled)
+              * delivery_date: ISO date (YYYY-MM-DD) or null. MUST be in future for out-of-stock items being ordered.
+              * reason: explanation if item cannot be fulfilled or not carried
+            - the total amount (sum of prices for items that can be fulfilled AND are in stock - do NOT include out-of-stock items or not-carried items)
             - the quote explanation
 
             The returned object should be a JSON dictionary and nothing else. Do not include any text outside of the JSON dictionary in your response.
@@ -920,18 +925,20 @@ class OrderingAgent(ToolCallingAgent):
             Step 5. PREPARE ORDER RESPONSE:
             Return a JSON dictionary containing:
             - "items_fulfilled": List of items that were charged (fulfilled: true)
-            - "items_out_of_stock": List of items pending supplier delivery (fulfilled: false)
-            - "items_cannot_fulfill": List of items that cannot be fulfilled at all
+            - "items_out_of_stock": List of items pending supplier delivery (fulfilled: false, with future delivery date)
+            - "items_not_carried": List of items not in our catalog (fulfilled: false, reason: "not carried")
+            - "items_cannot_fulfill": List of items that cannot be fulfilled for other reasons (fulfilled: false, with reason)
             - "amount_charged": Total amount charged (ONLY for fulfilled items)
             - "updated_cash_balance": New cash balance after charging for fulfilled items
-            - "explanation": Clear explanation distinguishing what was charged vs. what is pending/unfulfilled
+            - "explanation": Clear explanation distinguishing what was charged vs. what is pending/unfulfilled/not carried
 
             CRITICAL VALIDATION:
             - Verify that "amount_charged" matches the sum of prices for items where "fulfilled": true
             - Verify that you called place_sales_order exactly once per fulfilled item (no more, no less)
-            - Never charge for items where "fulfilled": false
+            - Never charge for items where "fulfilled": false (including out-of-stock and not-carried items)
             - Ensure that the updated cash balance reflects only the charges for fulfilled items
             - Do not place orders when funds are insufficient, and return an appropriate error message instead
+            - Distinguish items that are "not carried" from items that are "out of stock"
 
             The returned object should be a JSON dictionary and nothing else. Do not include any text outside of the JSON dictionary in your response.
             """
@@ -1039,6 +1046,16 @@ class CommunicationsAgent(ToolCallingAgent):
             flags=re.MULTILINE | re.IGNORECASE
         )
         
+        # Pattern 8: Remove internal template structure labels (Section 1, Section 2, etc.)
+        # Matches: "Section 1:", "Section 2:", "Section 3:", "Section 4:" and other section labels
+        # This prevents internal template structure from leaking into customer communications
+        sanitized = re.sub(
+            r'^[\s]*Section\s+\d+[\s:]*$\n?',
+            '',
+            sanitized,
+            flags=re.MULTILINE | re.IGNORECASE
+        )
+        
         # Clean up extra blank lines that may have been left behind
         sanitized = re.sub(r'\n\n\n+', '\n\n', sanitized)
         sanitized = sanitized.strip()
@@ -1064,15 +1081,17 @@ class CommunicationsAgent(ToolCallingAgent):
             ========================================================
             RULE 1: An item CANNOT be BOTH "successfully ordered/fulfilled" AND "out of stock" in the same message.
             Each item falls into EXACTLY ONE category:
-            - FULFILLED: Item is in stock and will be shipped. Say: "Successfully ordered: [item] [qty]"
-            - OUT_OF_STOCK: Item is not available now. Say: "[Item] is currently out of stock. Estimated delivery: [DATE]"
-            - CANNOT_FULFILL: Item cannot be ordered at all. Say: "[Item] could not be fulfilled due to [REASON]"
+            - FULFILLED: Item is in stock and will be shipped immediately. Say: "Successfully ordered: [item] [qty]"
+            - OUT_OF_STOCK: Item is not available now but ordered from supplier. Say: "[Item] is currently out of stock. Estimated delivery: [DATE]"
+            - NOT_CARRIED: Item is not in our catalog. Say: "[Item] is not carried in our catalog"
+            - CANNOT_FULFILL: Item cannot be ordered for other reasons. Say: "[Item] could not be fulfilled due to [REASON]"
             If an item is fulfilled, do NOT say it is out of stock. If an item is out of stock, do NOT say it is fulfilled. If an item cannot be fulfilled, do NOT say it is fulfilled or out of stock. Avoid any language that mixes these categories for the same item.
 
             RULE 2: Delivery dates must be REALISTIC FUTURE dates from the order date.
             - Check all delivery dates in the order response. They MUST be in the future relative to the order date.
+            - If an item is fulfilled (in stock), do NOT include a future delivery date. Say it will ship immediately or use a vague timeline like "soon".
             - If a delivery date appears to be in the past (e.g., October 2023 for an order from April 2025), this is an ERROR. Do NOT use that date.
-            - Only include delivery dates that are valid future dates (today or later).
+            - Only include delivery dates that are valid future dates for out-of-stock items that are being ordered.
             - Do not ask the customer for input on past dates; simply exclude any past-dated delivery information from the message and focus on valid future dates.
 
             RULE 3: Cash impact reflects fulfillment only.
@@ -1082,7 +1101,7 @@ class CommunicationsAgent(ToolCallingAgent):
             - If there is a mismatch (e.g., cash balance shows deduction but item is out of stock), this is an ERROR. Do NOT communicate that to the customer; instead, ensure your message reflects the correct fulfillment and charging status.
             - If the order cannot be fulfilled due to insufficient funds, communicate that clearly without mentioning specific cash balances.
             - If the order is fulfilled, communicate the successful charge without mentioning specific cash balances.
-            - An order cannot have an charged amount if charges have not been made. Make sure to use language like "quote value" or "total amount for fulfilled items" rather than "charged amount" if the order is not actually charged yet.
+            - An order cannot have a charged amount if charges have not been made. Make sure to use language like "quote value" or "total amount for fulfilled items" rather than "charged amount" if the order is not actually charged yet.
             - For orders that have a delivery date in the future, do not say "charged" if the charge has not been processed yet. Instead, say "Your order for [item] [qty] is confirmed and will be charged when it ships."
 
             CRITICAL GUARDRAILS - DO NOT INCLUDE IN CUSTOMER MESSAGE:
@@ -1094,7 +1113,8 @@ class CommunicationsAgent(ToolCallingAgent):
             4. INTERNAL FINANCIAL DETAILS - Do not include cash on hand, inventory value, or other internal financial metrics
             5. INTERNAL STEP-BY-STEP REASONING - Do not include "Step 1 Analysis", "Step 2 Communication", or other internal process steps
             6. INTERNAL THOUGHT PROCESS - Do not show your reasoning or analysis steps to the customer
-            7. PAST-DATED DELIVERY DATES - Do not include delivery dates that are in the past relative to the order date (e.g., October 2023 for an order from April 2025), and do not ask for input from the customer about past dates, just fail gracefully by excluding those dates from the message.
+            7. PAST-DATED DELIVERY DATES - Do not include delivery dates that are in the past relative to the order date
+            8. INTERNAL TEMPLATE STRUCTURE - Do NOT use "Section 1:", "Section 2:", "Section 3:", "Section 4:" or any other "Section N:" labels in your output. These are internal scaffolding only. Write a natural, flowing customer message instead.
 
             APPROVED INFORMATION TO INCLUDE:
             ================================
@@ -1102,6 +1122,7 @@ class CommunicationsAgent(ToolCallingAgent):
             - Item names and quantities that were fulfilled (in stock, shipped immediately)
             - The TOTAL ORDER AMOUNT (e.g., "Your order total is $65.00") - this is customer-facing pricing
             - Items that are out of stock with realistic estimated delivery dates (future dates only)
+            - Items that are not in our catalog
             - Items that could not be ordered and WHY (e.g., "insufficient stock", "missing pricing data")
             - Clear, empathetic explanations of any order processing issues
             - Professional next steps or recommendations
@@ -1109,24 +1130,28 @@ class CommunicationsAgent(ToolCallingAgent):
             Given the following order response details: {json.dumps(order_response)}, accomplish the following steps:
 
             Step 1. Analyze the order response details to determine the fulfillment status of the customer's order.
-            - IMPORTANT: Carefully separate items that are FULFILLED from items that are OUT_OF_STOCK or CANNOT_FULFILL.
+            - IMPORTANT: Carefully separate items that are FULFILLED from items that are OUT_OF_STOCK, NOT_CARRIED, or CANNOT_FULFILL.
             - Verify all delivery dates are realistic future dates relative to the order date.
+            - For fulfilled items, do NOT include future delivery dates (they ship immediately).
             
             Step 2. Craft a clear and informative communication message to the customer that summarizes the status of their order:
-            - Section 1: Clearly list items that were successfully ordered and immediately fulfilled with quantities
-            - Section 2: If applicable, list items that are out of stock. Do NOT say these items are "charged" or "successfully ordered". Instead, say they are "currently out of stock". Do not include any delivery date information for out-of-stock items.
-            - Section 3: If applicable, list items that could not be fulfilled and explain why
-            - Section 4: Include the total order amount (only for fulfilled items charged to customer)
-            - CRITICAL: Never mix "successfully ordered" and "out of stock" language for the same item in the same sentence/paragraph.
-            - Professional tone with appropriate empathy where needed
-
-            REMINDER: Ensure your final message does NOT contain:
-            - Any cash balances, account balances, transaction IDs, or internal financial details
-            - Any contradictory statements (item cannot be both fulfilled AND out of stock)
-            - Any past-dated delivery dates
-            Focus ONLY on clear, consistent order status information relevant to the customer.
-
-            Return ONLY the customer-facing message. Do not include any explanations, step-by-step analysis, or metadata. Just the message itself.
+            - Start with a warm greeting acknowledging their order
+            - List items that were successfully fulfilled with quantities in a natural paragraph or bullet format
+            - If applicable, list items that are out of stock with estimated delivery dates
+            - If applicable, note items that are not in our catalog (these should be distinguished from out-of-stock items)
+            - If applicable, list items that could not be fulfilled for other reasons and explain why
+            - Include the total order amount (for charged items)
+            - End with a professional closing and invitation to contact with questions
+            
+            CRITICAL REMINDERS:
+            - Write a natural, professional message. Do NOT use "Section 1:", "Section 2:", "Section 3:", "Section 4:" labels or any section headers.
+            - Never mix "successfully ordered" and "out of stock" language for the same item.
+            - Do NOT include delivery dates for items that are successfully fulfilled (they're being shipped immediately, not pending delivery).
+            - Do NOT charge customers for items that are out of stock or not in inventory.
+            - Distinguish between "out of stock" (item exists but is temporarily unavailable) and "not carried" (item does not exist in catalog).
+            - Ensure your final message does NOT contain any cash balances, transaction IDs, internal financial details, or past-dated delivery dates.
+            
+            Return ONLY the customer-facing message. Do not include any explanations, step-by-step analysis, metadata, or section labels. Just a natural, professional customer message.
             """
         )
         
