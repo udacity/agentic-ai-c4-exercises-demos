@@ -762,6 +762,60 @@ class QuotingAgent(ToolCallingAgent):
         response = self.run(
             f"""You are a quoting agent for Munder Difflin. Your task is to generate a quote for a customer request based on the order details provided.
             
+            ============================================================================
+            ABSOLUTE MUTUALLY EXCLUSIVE CATEGORIES - NO ITEM APPEARS IN MULTIPLE STATES
+            ============================================================================
+            
+            Each item in the quote belongs to EXACTLY ONE fulfillment state:
+            
+            1. FULFILLED: "fulfilled": true
+               - Item IS in stock
+               - Item WILL ship immediately (or today)
+               - Set "is_in_stock": true
+               - Set "fulfilled": true
+               - Set "delivery_date": null (or current date, no future date)
+               - NO delivery_date field for future - item ships today
+            
+            2. OUT_OF_STOCK_WITH_DELIVERY: "fulfilled": false + has delivery_date
+               - Item is NOT in stock
+               - Item CAN be ordered from supplier
+               - Set "is_in_stock": false
+               - Set "fulfilled": false
+               - Set "delivery_date": VALID FUTURE ISO DATE (after request_date)
+               - NO "reason" field needed - the delivery_date indicates it will arrive
+            
+            3. NOT_CARRIED: "fulfilled": false + reason: "not in catalog"
+               - Item DOES NOT exist in our paper_supplies catalog
+               - Item CANNOT be ordered (not offered)
+               - Set "is_in_stock": false
+               - Set "fulfilled": false
+               - Set "delivery_date": null (NO delivery - never coming)
+               - Set "reason": "[Item name] is not carried in our catalog"
+            
+            4. CANNOT_FULFILL: "fulfilled": false + other reason
+               - Item EXISTS in catalog but CANNOT be ordered
+               - Set "is_in_stock": false
+               - Set "fulfilled": false
+               - Set "delivery_date": null (NO delivery - cannot get it)
+               - Set "reason": specific explanation (pricing missing, etc.)
+
+            ============================================================================
+            ABSOLUTE CONTRADICTION PREVENTION
+            ============================================================================
+            
+            AN ITEM CANNOT VIOLATE THESE RULES:
+            ✗ Item cannot be BOTH "fulfilled": true AND "fulfilled": false
+            ✗ Item cannot be BOTH "is_in_stock": true AND "is_in_stock": false
+            ✗ Item cannot be BOTH in stock AND have a future delivery date
+            ✗ Item cannot be FULFILLED (fulfilled: true) AND OUT_OF_STOCK (fulfilled: false)
+            ✗ Item cannot be FULFILLED AND have a delivery_date field
+            ✗ Item cannot be NOT_CARRIED AND be in stock
+            ✗ Item cannot be in multiple categories simultaneously
+
+            Example of ERROR to prevent (from Row 14):
+            "A4 paper (5000 units) - successfully ordered and will ship immediately... all items are out of stock"
+            This mixes "fulfilled" (will ship immediately) with "out of stock" (not available)
+            
             Given the following order details: {json.dumps(order_details)}, accomplish the following steps:
 
             Step 1. Search the quote history for any similar requests using the check_quote_history tool.
@@ -780,38 +834,39 @@ class QuotingAgent(ToolCallingAgent):
             - If any item does not have sufficient stock, use the check_delivery_date tool to estimate the delivery date for the required quantity of that item. CRITICAL: Pass the request date from order_details as the input to check_delivery_date, NOT today's date or any other date.
 
             Step 3. Based on the information gathered in steps 1 and 2, generate a quote for the customer request.
-            CRITICAL LOGIC: Each item in the order must fall into EXACTLY ONE of these mutually exclusive categories:
-            - FULFILLED: Item is in stock. Set "is_in_stock": true, "fulfilled": true, "delivery_date": null or today's date
-            - OUT_OF_STOCK_WITH_DELIVERY: Item is out of stock but exists in catalog and can be ordered. Set "is_in_stock": false, "fulfilled": false, "delivery_date": calculated supplier delivery date (MUST be in the future from request date)
-            - NOT_CARRIED: Item is not in our paper_supplies catalog. Set "is_in_stock": false, "fulfilled": false, "delivery_date": null, "reason": "[Item name] is not carried in our catalog"
-            - CANNOT_FULFILL: Item cannot be fulfilled for other reasons. Set "is_in_stock": false, "fulfilled": false, "delivery_date": null, "reason": explanation
+            For EACH item in the order, place it in EXACTLY ONE of the four categories above:
             
-            An item CANNOT be in multiple states simultaneously. This is a logical error that must be avoided.
-            Specifically:
-            - An item cannot be both "fulfilled" and "out of stock" 
-            - An item cannot be both "not_carried" and "in stock"
-            - An item cannot have a delivery date if it's not being ordered
+            - If has_sufficient_stock returned true → FULFILLED category
+            - If has_sufficient_stock returned false AND item exists in catalog → OUT_OF_STOCK_WITH_DELIVERY category (use delivery_date from check_delivery_date)
+            - If item does NOT exist in paper_supplies catalog → NOT_CARRIED category
+            - If item exists in catalog but cannot be quoted (missing pricing, etc.) → CANNOT_FULFILL category
+            
+            - Ensure that the total amount for the quote is calculated correctly: sum of prices for FULFILLED items ONLY
+            - Do NOT include out-of-stock, not-carried, or cannot-fulfill items in the total_amount
+            - Provide a clear explanation for the quote, including any assumptions made
 
-            - If a similar quote was found in the history, use it as a reference for pricing, but adjust the quote as necessary based on current inventory availability and delivery timelines.
-            - If no similar quote was found, generate a new quote based on the order details, inventory availability, and delivery timelines.
-            - For each item in the order, use the stock availability and delivery information to determine which category it falls into (FULFILLED, OUT_OF_STOCK_WITH_DELIVERY, NOT_CARRIED, or CANNOT_FULFILL).
-            - Ensure that the total amount for the quote is calculated correctly based on the included items and their prices (total price for each item = unit price * quantity, and total quote amount = sum of total prices for fulfilled items only).
-            - Provide a clear explanation for the quote, including any assumptions made, adjustments based on inventory or delivery constraints, and references to similar historical quotes if applicable.
+            Step 4. VALIDATION - Check all items before returning:
+            - ZERO items should appear in multiple categories
+            - All FULFILLED items have "fulfilled": true and NO delivery_date
+            - All OUT_OF_STOCK items have "fulfilled": false and a VALID FUTURE delivery_date
+            - All NOT_CARRIED items have reason mentioning "not carried" or "not in catalog"
+            - All CANNOT_FULFILL items have a specific reason
+            - Total amount equals sum of FULFILLED item prices only
 
             Return the generated quote as a JSON dictionary containing:
-            - the request date
-            - the needed by date
-            - a list of items with their fulfillment status:
+            - request_date: ISO date
+            - needed_date: ISO date
+            - items: array of items, each with:
               * item_name
               * quantity
-              * unit_price (or null if not in catalog)
-              * total_price
+              * unit_price (or null)
+              * total_price (or null if not in catalog)
               * is_in_stock: boolean
-              * fulfilled: boolean (true ONLY if item is in stock and will be sent immediately)
-              * delivery_date: ISO date (YYYY-MM-DD) or null. MUST be in future for out-of-stock items being ordered.
-              * reason: explanation if item cannot be fulfilled or not carried
-            - the total amount (sum of prices for items that can be fulfilled AND are in stock - do NOT include out-of-stock items or not-carried items)
-            - the quote explanation
+              * fulfilled: boolean (true ONLY if item will ship immediately)
+              * delivery_date: ISO date or null (ONLY for out-of-stock items being ordered)
+              * reason: explanation (ONLY for not-carried or cannot-fulfill)
+            - total_amount: sum of fulfilled items only
+            - quote_explanation: clear description
 
             The returned object should be a JSON dictionary and nothing else. Do not include any text outside of the JSON dictionary in your response.
             
@@ -878,69 +933,113 @@ class OrderingAgent(ToolCallingAgent):
         response = self.run(
             f"""You are an ordering agent for Munder Difflin. Your task is to place an order based on a generated quote and manage the financial transactions accordingly.
 
-            CRITICAL FULFILLMENT & CHARGING RULES:
-            ==========================================
-            Rule 1 - ONLY CHARGE FOR FULFILLED ITEMS:
-            - Items with "fulfilled": true = IN STOCK, READY TO SHIP, CHARGE CUSTOMER NOW
-            - Items with "fulfilled": false = OUT OF STOCK, PENDING SUPPLIER DELIVERY, DO NOT CHARGE NOW
+            ============================================================================
+            ABSOLUTE CRITICAL RULES - NO EXCEPTIONS
+            ============================================================================
             
-            Rule 2 - CALCULATE CORRECT TOTAL:
-            - Total amount to charge = SUM of (unit_price * quantity) for ONLY items where "fulfilled": true
-            - Do NOT include prices for items where "fulfilled": false in the charge total
+            MUTUALLY EXCLUSIVE CATEGORIES:
+            Each item in the quote belongs to EXACTLY ONE category:
+            1. FULFILLED: "fulfilled": true → IN STOCK, CHARGE NOW, SHIP NOW
+            2. OUT_OF_STOCK: "fulfilled": false + has delivery_date → NOT CHARGED NOW, WILL CHARGE WHEN SHIPPED
+            3. NOT_CARRIED: "fulfilled": false + reason: "not carried" → NEVER CHARGE
+            4. CANNOT_FULFILL: "fulfilled": false + other reason → NEVER CHARGE
             
-            Rule 3 - VERIFY FULFILLMENT STATUS:
-            - Examine each item in the quote's items list
-            - Look at the "fulfilled" field for each item (true or false)
-            - Items with "fulfilled": false should be listed as "out of stock" or "pending" in your response
-            - Items with "fulfilled": true should be listed as "charged" or "successfully ordered" in your response
+            AN ITEM CANNOT BE IN MULTIPLE CATEGORIES SIMULTANEOUSLY.
+            Example of ERROR to prevent:
+            - "A4 paper successfully fulfilled and charged" + "A4 paper out of stock" = CONTRADICTION
+            
+            CATEGORIZATION BY FULFILLMENT STATUS:
+            - If item in quote has "fulfilled": true → Goes in items_fulfilled list
+            - If item in quote has "fulfilled": false AND has future delivery_date → Goes in items_out_of_stock list
+            - If item in quote has "fulfilled": false AND reason mentions "not in catalog/not carried" → Goes in items_not_carried list
+            - If item in quote has "fulfilled": false AND other reason → Goes in items_cannot_fulfill list
+            
+            ============================================================================
+            CHARGING LOGIC - ABSOLUTE CLARITY
+            ============================================================================
+            
+            ONLY items with "fulfilled": true are charged.
+            Amount to charge = SUM of (item.unit_price * item.quantity) for ONLY items where "fulfilled": true
+            
+            Items with "fulfilled": false are NOT charged - ZERO exceptions
+            Do NOT call place_sales_order for any item where "fulfilled": false
+            
+            If amount_charged = 0, this means NO fulfilled items exist (all are out of stock, not carried, or cannot fulfill)
+            If amount_charged > 0, this means fulfilled items exist and have been charged
+
+            ============================================================================
+            STEP-BY-STEP PROCESS - FOLLOW EXACTLY
+            ============================================================================
 
             Given the following quote details: {json.dumps(quote)}, accomplish the following steps:
 
-            Step 1. ANALYZE FULFILLMENT STATUS:
-            - Extract all items from the quote.
-            - Separate items into two categories:
-              a) FULFILLED ITEMS: Items where "fulfilled": true
-              b) NON-FULFILLED ITEMS: Items where "fulfilled": false
-            - Calculate the total amount to charge based ONLY on fulfilled items.
+            Step 1. EXTRACT AND CATEGORIZE ALL ITEMS:
+            - Go through each item in quote.items
+            - For each item: read the "fulfilled" field
+            - If "fulfilled": true → collect for CHARGING (place_sales_order calls)
+            - If "fulfilled": false → collect for NON-CHARGING (identify why: out of stock, not carried, or other)
 
-            Step 2. VERIFY CASH AVAILABILITY FOR FULFILLED ITEMS:
-            - Use get_current_cash_balance tool to check the current cash balance.
-            - Compare the current cash balance to the total amount calculated for FULFILLED ITEMS ONLY.
-            - If the cash balance is sufficient to cover the fulfilled items, proceed to step 3.
-            - If the cash balance is insufficient, return a response indicating the order cannot be placed due to insufficient funds and CRITICAL: Do NOT attempt to place any sales orders if funds are insufficient or if fulfilling the order would result in a negative cash balance.
+            Step 2. SEPARATE NON-FULFILLED ITEMS BY REASON:
+            - For each item where "fulfilled": false:
+              * If has "delivery_date" field with future date → OUT_OF_STOCK category
+              * If "reason" includes "not in catalog", "not carried" → NOT_CARRIED category
+              * Else → CANNOT_FULFILL category
 
-            Step 3. RECORD SALES FOR FULFILLED ITEMS ONLY:
-            - For EACH item where "fulfilled": true, call the place_sales_order tool with:
-              * item_name (from the quote)
-              * quantity (from the quote)
-              * total_price (unit_price * quantity from the quote)
-              * transaction_date (from the quote's request_date)
-            - CRITICAL: Do NOT call place_sales_order for any items where "fulfilled": false
-            - Each place_sales_order call records a real sale and deducts from cash balance
+            Step 3. CALCULATE CHARGE TOTAL FOR FULFILLED ITEMS ONLY:
+            - Sum = 0
+            - For each item in items_fulfilled (those with "fulfilled": true):
+                Sum = Sum + (item.unit_price * item.quantity)
+            - This Sum is the total to charge
 
-            Step 4. GENERATE UPDATED FINANCIAL REPORT:
-            - After placing all sales orders for fulfilled items, use the generate_financial_report tool.
-            - This reflects the new cash balance after charging for fulfilled items only.
+            Step 4. VERIFY CASH AVAILABILITY:
+            - Use get_current_cash_balance tool to check available funds (use quote.request_date)
+            - If available_cash < Sum: RETURN ERROR - insufficient funds, do NOT place any sales orders
+                - CRITICAL: Do NOT place any sales orders if funds are insufficient, even for partially fulfilled items. The entire order must be fulfilled to proceed with charging.
+                - CRITICAL: Do NOT charge for any items if the total charge exceeds available cash, even if some items are fulfilled. The order must be fully chargeable to proceed.
+                - CRITICAL: Do NOT place an order if the charge for fulfilled items exceeds available cash, even if some items are out of stock or not carried. The presence of non-fulfilled items does not reduce the charge for fulfilled items.
+            - If available_cash >= Sum: PROCEED to step 5
 
-            Step 5. PREPARE ORDER RESPONSE:
-            Return a JSON dictionary containing:
-            - "items_fulfilled": List of items that were charged (fulfilled: true)
-            - "items_out_of_stock": List of items pending supplier delivery (fulfilled: false, with future delivery date)
-            - "items_not_carried": List of items not in our catalog (fulfilled: false, reason: "not carried")
-            - "items_cannot_fulfill": List of items that cannot be fulfilled for other reasons (fulfilled: false, with reason)
-            - "amount_charged": Total amount charged (ONLY for fulfilled items)
-            - "updated_cash_balance": New cash balance after charging for fulfilled items
-            - "explanation": Clear explanation distinguishing what was charged vs. what is pending/unfulfilled/not carried
+            Step 5. PLACE SALES ORDERS FOR FULFILLED ITEMS ONLY:
+            - For EACH item in items_fulfilled:
+                Call place_sales_order with:
+                  * item_name: item.item_name
+                  * quantity: item.quantity
+                  * price: item.unit_price * item.quantity
+                  * transaction_date: quote.request_date
+            - CRITICAL: Call place_sales_order EXACTLY ONCE per fulfilled item
+            - CRITICAL: Do NOT call place_sales_order for any item where "fulfilled": false
+            - Each call deducts from cash balance
 
-            CRITICAL VALIDATION:
-            - Verify that "amount_charged" matches the sum of prices for items where "fulfilled": true
-            - Verify that you called place_sales_order exactly once per fulfilled item (no more, no less)
-            - Never charge for items where "fulfilled": false (including out-of-stock and not-carried items)
-            - Ensure that the updated cash balance reflects only the charges for fulfilled items
-            - Do not place orders when funds are insufficient, and return an appropriate error message instead
-            - Distinguish items that are "not carried" from items that are "out of stock"
+            Step 6. VERIFY CHARGE ACCURACY:
+            - After all place_sales_order calls, generate financial report
+            - Verify new cash balance = old cash balance - Sum (from step 3)
+            - If mismatch: REPORT ERROR
 
-            The returned object should be a JSON dictionary and nothing else. Do not include any text outside of the JSON dictionary in your response.
+            Step 7. RETURN STRUCTURED RESPONSE:
+            Return as JSON dictionary (NO other text):
+            {{
+              "items_fulfilled": [list of items with "fulfilled": true, include quantity and total_price],
+              "items_out_of_stock": [list of items with "fulfilled": false and future delivery_date, include quantity and delivery_date],
+              "items_not_carried": [list of items with "fulfilled": false and "not carried" reason],
+              "items_cannot_fulfill": [list of items with "fulfilled": false and other reasons],
+              "amount_charged": "Sum from step 3",
+              "updated_cash_balance": "new balance after charges",
+              "explanation": "Clear description of what was charged and what is pending/not carried"
+            }}
+
+            ============================================================================
+            CRITICAL VALIDATION - MUST PASS ALL CHECKS
+            ============================================================================
+            ✓ amount_charged = SUM of (unit_price * quantity) for items where "fulfilled": true ONLY
+            ✓ NO items appear in both items_fulfilled AND items_out_of_stock
+            ✓ NO items appear in both items_fulfilled AND items_not_carried
+            ✓ NO items appear in both items_fulfilled AND items_cannot_fulfill
+            ✓ place_sales_order called exactly once per fulfilled item
+            ✓ place_sales_order NEVER called for items where "fulfilled": false
+            ✓ updated_cash_balance reflects charges for fulfilled items ONLY
+            ✓ Funds were sufficient or error was returned (no negative cash)
+            
+            The returned object should be a JSON dictionary and nothing else. Do not include any text outside the JSON.
             """
         )
         
@@ -1077,81 +1176,122 @@ class CommunicationsAgent(ToolCallingAgent):
         response = self.run(
             f"""You are a communications agent for Munder Difflin. Your task is to manage communications with customers regarding the fulfillment status of their orders.
 
-            CRITICAL LOGIC RULES - PREVENT CONTRADICTORY STATEMENTS:
-            ========================================================
-            RULE 1: An item CANNOT be BOTH "successfully ordered/fulfilled" AND "out of stock" in the same message.
-            Each item falls into EXACTLY ONE category:
-            - FULFILLED: Item is in stock and will be shipped immediately. Say: "Successfully ordered: [item] [qty]"
-            - OUT_OF_STOCK: Item is not available now but ordered from supplier. Say: "[Item] is currently out of stock. Estimated delivery: [DATE]"
-            - NOT_CARRIED: Item is not in our catalog. Say: "[Item] is not carried in our catalog"
-            - CANNOT_FULFILL: Item cannot be ordered for other reasons. Say: "[Item] could not be fulfilled due to [REASON]"
-            If an item is fulfilled, do NOT say it is out of stock. If an item is out of stock, do NOT say it is fulfilled. If an item cannot be fulfilled, do NOT say it is fulfilled or out of stock. Avoid any language that mixes these categories for the same item.
+            ============================================================================
+            ABSOLUTE MUTUALLY EXCLUSIVE CATEGORY RULES - NO EXCEPTIONS
+            ============================================================================
+            
+            EACH ITEM MUST FALL INTO EXACTLY ONE OF THESE CATEGORIES:
+            
+            1. FULFILLED: Item is IN STOCK, HAS BEEN CHARGED, SHIPS IMMEDIATELY
+               - Fulfillment Status: "fulfilled": true
+               - Charging: ALREADY CHARGED (past tense - "Your $X.XX has been charged")
+               - Communication: "Successfully ordered: [item] [qty]" or "will be shipped immediately"
+               - DO NOT include any future delivery date
+               - DO NOT say "will be charged" or "will be charged when shipped"
+            
+            2. OUT_OF_STOCK: Item is NOT IN STOCK, NOT CHARGED YET, WILL ARRIVE FROM SUPPLIER
+               - Fulfillment Status: "fulfilled": false
+               - Charging: NOT CHARGED NOW, WILL BE CHARGED WHEN SHIPPED (future tense)
+               - Communication: "[Item] is out of stock. Estimated delivery: [DATE]" 
+               - Always say: "will be charged when it ships" or "will be charged when items arrive"
+               - DO NOT say: "is fulfilled", "ships immediately", or "has been charged"
+               - MUST include valid future delivery date
+            
+            3. NOT_CARRIED: Item does NOT EXIST in our catalog
+               - Fulfillment Status: "fulfilled": false
+               - Charging: NEVER CHARGED
+               - Communication: "[Item] is not carried in our catalog"
+               - DO NOT include delivery date
+            
+            4. CANNOT_FULFILL: Item cannot be fulfilled for OTHER REASONS (missing data, etc.)
+               - Fulfillment Status: "fulfilled": false
+               - Charging: NEVER CHARGED
+               - Communication: "[Item] could not be fulfilled due to [SPECIFIC REASON]"
+               - DO NOT say "out of stock" (use category 2 for out of stock)
+               - DO NOT say "not carried" (use category 3 for that)
 
-            RULE 2: Delivery dates must be REALISTIC FUTURE dates from the order date.
-            - Check all delivery dates in the order response. They MUST be in the future relative to the order date.
-            - If an item is fulfilled (in stock), do NOT include a future delivery date. Say it will ship immediately or use a vague timeline like "soon".
-            - If a delivery date appears to be in the past (e.g., October 2023 for an order from April 2025), this is an ERROR. Do NOT use that date.
-            - Only include delivery dates that are valid future dates for out-of-stock items that are being ordered.
-            - Do not ask the customer for input on past dates; simply exclude any past-dated delivery information from the message and focus on valid future dates.
+            ============================================================================
+            ABSOLUTE CONTRADICTION PREVENTION RULES
+            ============================================================================
+            
+            A SINGLE ITEM CANNOT APPEAR IN MULTIPLE CATEGORIES:
+            - An item cannot be BOTH fulfilled AND out of stock (THIS WAS VIOLATED IN ROW 14 - FIX IT)
+            - An item cannot be BOTH fulfilled AND not carried
+            - An item cannot be BOTH out of stock AND not carried
+            - An item cannot be BOTH fulfilled AND cannot fulfill
+            
+            EXPLICIT CHARGING LOGIC - ZERO AMBIGUITY:
+            - If an item is FULFILLED: item ALREADY CHARGED. Past tense: "charged", "has been charged", "Your $X total"
+            - If an item is OUT_OF_STOCK: item NOT CHARGED YET. Future tense: "will be charged when shipped", "charged upon delivery"
+            - If an item is NOT_CARRIED or CANNOT_FULFILL: NEVER CHARGED. State this clearly.
+            - An item CANNOT be "pending" charge or "maybe charged" - it IS or IS NOT charged
+            
+            DELIVERY DATE LOGIC - NO AMBIGUITY:
+            - Fulfilled items: NO future delivery date (ship immediately/today)
+            - Out of stock items: MUST have valid future delivery date
+            - "Out of stock but will arrive by X date" = ITEM IS OUT OF STOCK (category 2, will charge when shipped)
+            - "Cannot fulfill by needed date" + "item is in stock" = FULFILLED (charge now, ship now, date is not relevant)
+            - "Cannot fulfill by needed date" + "item is out of stock" = OUT OF STOCK (don't charge, will charge when ships late)
 
-            RULE 3: Cash impact reflects fulfillment only.
-            - If items are "successfully ordered" and charged to the customer, the cash balance should show a deduction.
-            - If items are "out of stock", they should NOT be charged yet (no cash deduction).
-            - Verify consistency: fulfilled items = cash deduction, out-of-stock items = no deduction.
-            - If there is a mismatch (e.g., cash balance shows deduction but item is out of stock), this is an ERROR. Do NOT communicate that to the customer; instead, ensure your message reflects the correct fulfillment and charging status.
-            - If the order cannot be fulfilled due to insufficient funds, communicate that clearly without mentioning specific cash balances.
-            - If the order is fulfilled, communicate the successful charge without mentioning specific cash balances.
-            - An order cannot have a charged amount if charges have not been made. Make sure to use language like "quote value" or "total amount for fulfilled items" rather than "charged amount" if the order is not actually charged yet.
-            - For orders that have a delivery date in the future, do not say "charged" if the charge has not been processed yet. Instead, say "Your order for [item] [qty] is confirmed and will be charged when it ships."
-
+            ============================================================================
             CRITICAL GUARDRAILS - DO NOT INCLUDE IN CUSTOMER MESSAGE:
-            ========================================================
-            You MUST NOT include any of the following in your customer communication:
-            1. CASH BALANCES OR ACCOUNT BALANCES - Never mention "cash balance", "account balance", "updated balance", or "Your updated cash balance"
-            2. DOLLAR AMOUNTS related to company finances or balances - Do not include amounts like "$50,000" or "$46,052.20" in balance contexts
-            3. TRANSACTION IDs - Do not include "Transaction ID", "transaction id", or any transaction reference numbers
-            4. INTERNAL FINANCIAL DETAILS - Do not include cash on hand, inventory value, or other internal financial metrics
-            5. INTERNAL STEP-BY-STEP REASONING - Do not include "Step 1 Analysis", "Step 2 Communication", or other internal process steps
-            6. INTERNAL THOUGHT PROCESS - Do not show your reasoning or analysis steps to the customer
-            7. PAST-DATED DELIVERY DATES - Do not include delivery dates that are in the past relative to the order date
-            8. INTERNAL TEMPLATE STRUCTURE - Do NOT use "Section 1:", "Section 2:", "Section 3:", "Section 4:" or any other "Section N:" labels in your output. These are internal scaffolding only. Write a natural, flowing customer message instead.
+            ============================================================================
+            1. CASH BALANCES - Never mention cash, balance, or account information
+            2. TRANSACTION IDs - Never include transaction references
+            3. INTERNAL DETAILS - No internal financial metrics
+            4. INTERNAL REASONING - No Step 1/2, Section 1/2, etc.
+            5. PAST-DATED DELIVERY DATES - Remove any past dates
+            6. AMBIGUOUS LANGUAGE - No "might", "pending", "awaiting approval"
 
-            APPROVED INFORMATION TO INCLUDE:
-            ================================
-            You MAY include:
-            - Item names and quantities that were fulfilled (in stock, shipped immediately)
-            - The TOTAL ORDER AMOUNT (e.g., "Your order total is $65.00") - this is customer-facing pricing
-            - Items that are out of stock with realistic estimated delivery dates (future dates only)
-            - Items that are not in our catalog
-            - Items that could not be ordered and WHY (e.g., "insufficient stock", "missing pricing data")
-            - Clear, empathetic explanations of any order processing issues
-            - Professional next steps or recommendations
+            ============================================================================
+            STEP-BY-STEP EXECUTION - FOLLOW EXACTLY
+            ============================================================================
+            
+            Step 1. PARSE AND VALIDATE INPUT
+            - Extract from order_response: {json.dumps(order_response)}
+            - Identify items_fulfilled, items_out_of_stock, items_not_carried, items_cannot_fulfill lists
+            - CRITICAL CHECK: Verify ZERO items appear in multiple lists
+            
+            Step 2. VALIDATE CATEGORY CONSISTENCY
+            - For EACH item in the order: appears in EXACTLY ONE category
+            - ERROR CHECK: If any item is in BOTH items_fulfilled AND items_out_of_stock → STOP and fix
+            - Example of WRONG to prevent: "A4 paper (5000) successfully ordered" + "A4 paper (5000) out of stock"
+            
+            Step 3. VALIDATE CHARGING CONSISTENCY  
+            - Count items in items_fulfilled: sum their total_price values
+            - This sum MUST EQUAL amount_charged (within rounding)
+            - ERROR: If amount_charged > 0 but items_fulfilled is empty → charging without fulfilled items
+            - ERROR: If amount_charged = 0 but items_fulfilled has items → fulfilled items not charged
+            
+            Step 4. VALIDATE DELIVERY DATES
+            - Fulfilled items: REMOVE any future delivery dates mentioned
+            - Out of stock items: KEEP valid future delivery dates only (after request_date)
+            - REMOVE any past-dated delivery information
+            
+            Step 5. COMPOSE MESSAGE - FOLLOW STRUCTURE STRICTLY
+            A. Greeting acknowledging order receipt
+            B. IF FULFILLED ITEMS: "We are pleased to inform you that the following items have been successfully fulfilled and will ship immediately:"
+               - List each item with quantity (NO delivery dates)
+               - After list: "Your order total is $[amount]. This amount has been charged."
+            C. IF OUT_OF_STOCK ITEMS: "The following items are currently out of stock but have been ordered from our supplier:"
+               - List each item with quantity and DELIVERY DATE ONLY
+               - After list: "We will charge you for these items when they ship."
+            D. IF NOT_CARRIED ITEMS: "The following items are not in our catalog:"
+               - List items with quantity
+            E. IF CANNOT_FULFILL ITEMS: "The following items could not be fulfilled:"
+               - List item with specific reason
+            F. Professional closing with contact info
+            
+            Step 6. CRITICAL VALIDATION BEFORE RETURNING MESSAGE
+            - SCAN: No item appears in both fulfilled and out_of_stock sections
+            - SCAN: No fulfilled items without explicit "has been charged" language
+            - SCAN: No out_of_stock items without "will be charged when shipped" language
+            - SCAN: No internal metadata, section numbers, or financial details
+            - SCAN: No past-dated delivery information
+            - If ANY check fails: FIX the message before returning it
 
-            Given the following order response details: {json.dumps(order_response)}, accomplish the following steps:
-
-            Step 1. Analyze the order response details to determine the fulfillment status of the customer's order.
-            - IMPORTANT: Carefully separate items that are FULFILLED from items that are OUT_OF_STOCK, NOT_CARRIED, or CANNOT_FULFILL.
-            - Verify all delivery dates are realistic future dates relative to the order date.
-            - For fulfilled items, do NOT include future delivery dates (they ship immediately).
-            
-            Step 2. Craft a clear and informative communication message to the customer that summarizes the status of their order:
-            - Start with a warm greeting acknowledging their order
-            - List items that were successfully fulfilled with quantities in a natural paragraph or bullet format
-            - If applicable, list items that are out of stock with estimated delivery dates
-            - If applicable, note items that are not in our catalog (these should be distinguished from out-of-stock items)
-            - If applicable, list items that could not be fulfilled for other reasons and explain why
-            - Include the total order amount (for charged items)
-            - End with a professional closing and invitation to contact with questions
-            
-            CRITICAL REMINDERS:
-            - Write a natural, professional message. Do NOT use "Section 1:", "Section 2:", "Section 3:", "Section 4:" labels or any section headers.
-            - Never mix "successfully ordered" and "out of stock" language for the same item.
-            - Do NOT include delivery dates for items that are successfully fulfilled (they're being shipped immediately, not pending delivery).
-            - Do NOT charge customers for items that are out of stock or not in inventory.
-            - Distinguish between "out of stock" (item exists but is temporarily unavailable) and "not carried" (item does not exist in catalog).
-            - Ensure your final message does NOT contain any cash balances, transaction IDs, internal financial details, or past-dated delivery dates.
-            
-            Return ONLY the customer-facing message. Do not include any explanations, step-by-step analysis, metadata, or section labels. Just a natural, professional customer message.
+            Return ONLY the customer-facing message. Write naturally and professionally following the structure above.
+            Do NOT include any metadata, JSON, section numbers, or internal scaffolding.
             """
         )
         
