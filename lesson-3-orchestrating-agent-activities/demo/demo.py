@@ -158,7 +158,7 @@ class CustomerSupportAgent(ToolCallingAgent):
         After determining the most appropriate category, you MUST call the 'submit_request_diagnosis' tool.
         Provide your chosen category as the 'chosen_category' argument,
         and the original user request as the 'original_request_for_context' argument.
-        Your final text after the tool call should be simple, like "Diagnosis submitted."
+        Once you have received the observation from the tool, conclude your turn by calling the 'final_answer' tool with a simple message like "Diagnosis submitted."
         """
         _ = self.run(prompt) 
 
