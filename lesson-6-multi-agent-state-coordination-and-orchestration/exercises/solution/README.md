@@ -1,76 +1,72 @@
-```markdown
-# Multi-Agent Pasta Factory
+# 🍝 Italian Pasta Factory Custom Orders: Solution
 
-This project implements a multi-agent system simulating a pasta factory. It uses agents to process orders, manage inventory, and provide lead time estimates. The system includes conflict resolution and synchronization mechanisms to ensure consistent information across agents.
+## Overview
+
+`solution.py` is the completed version of `starter/starter.py`. It extends the Italian Pasta Factory multi-agent system with custom pasta recipes and order priorities. A `ToolCallingAgent` orchestrator coordinates four specialized agents, and every agent works on one shared factory state.
 
 ## Key Components
 
-1.  **PastaShape Class:**
-    *   Represents a pasta shape with its ingredients.
+### Shared State
 
-2.  **OrderProcessorAgent:**
-    *   Processes customer orders.
-    *   Determines the pasta shape requested.
-    *   Checks the shape database to confirm if the requested shape can be made.
-    *   Uses an LLM to interpret customer requests.
+* **`PastaOrder`**: one order, with its ID, pasta shape, quantity in kg, status, priority (1 = normal, 2 = rush, 3 = emergency), customer notes and estimated delivery date.
+* **`FactoryState`**: everything the agents share: the ingredient `inventory`, the `production_queue`, the standard `pasta_recipes`, the `custom_recipes`, an order counter and the list of `known_pasta_shapes`.
+* **`factory_state`**: the single `FactoryState` instance that all tools read and modify.
 
-3.  **InventoryManagerAgent:**
-    *   Manages the factory's inventory of ingredients.
-    *   Checks ingredient availability based on order requirements.
-    *   Updates the inventory after an order is processed (though update functionality is not fully implemented in this version).
+### Tools
 
-4.  **GetCurrentDateTool:**
-    *   A tool to retrieve the current date.
+Agents never change `factory_state` directly. They call tools that enforce the business rules:
 
-5.  **EstimateLeadTimeTool:**
-    *   A tool to estimate the delivery lead time for an order.
+* `check_pasta_recipe`, `check_inventory`, `list_available_pasta_shapes`: read the state.
+* `generate_order_id`: returns the next order ID (`ORD-0001`, `ORD-0002`, ...).
+* `check_production_capacity`: estimates how long the current queue will take, at 10 kg per day.
+* `add_to_production_queue`: checks that the pasta shape has a recipe and that the inventory holds enough of every ingredient. Only then does it queue the order and subtract the ingredients. If anything is missing, it changes nothing and returns `"success": False`.
+* `create_custom_pasta_recipe`: accepts a recipe only if every ingredient is in the inventory and the name isn't taken, then adds it to `custom_recipes`.
+* `prioritize_order`: changes the priority of a queued order and recalculates its delivery date.
+* `update_inventory`: sets an ingredient to a new amount.
 
-6.  **PastaFactoryManager (AgentManager):**
-    *   The central orchestrator of the system.
-    *   Manages communication between the order processor and inventory manager.
-    *   Uses a lock (`asyncio.Lock`) to synchronize access to shared resources and prevent race conditions.
-    *   Coordinates order fulfillment:
-        *   Receives customer orders.
-        *   Queries the OrderProcessorAgent to identify the pasta shape.
-        *   Queries the InventoryManagerAgent to check ingredient availability.
-        *   If ingredients are available, estimates the lead time using the EstimateLeadTimeTool and confirms the order.
-        *   Returns an appropriate response to the customer.
+### Specialized Agents
 
-## How it Works
+Each one is a smolagents `ToolCallingAgent` with only the tools its job needs:
 
-1.  **Initialization:**
-    *   The `main()` function initializes the LLM (OpenAI), the inventory manager, the order processor, and the factory manager.
-    *   Initial inventory is set.
+| Agent | Tools |
+|---|---|
+| `OrderProcessorAgent` | `check_pasta_recipe`, `generate_order_id`, `list_available_pasta_shapes` |
+| `InventoryManagerAgent` | `check_inventory`, `check_pasta_recipe`, `update_inventory` |
+| `ProductionManagerAgent` | `check_production_capacity`, `add_to_production_queue`, `prioritize_order` |
+| `CustomPastaDesignerAgent` | `check_inventory`, `create_custom_pasta_recipe` |
 
-2.  **Order Processing:**
-    *   The `main()` function calls the `handle_order()` method of the `PastaFactoryManager`, passing in the customer order.
-    *   The `PastaFactoryManager` uses the `asyncio.Lock` to ensure that operations are synchronized.
-    *   The `OrderProcessorAgent` determines the requested pasta shape from the order.
-    *   The `InventoryManagerAgent` checks for ingredient availability.
-    *   If all ingredients are available, the `EstimateLeadTimeTool` is used.
-    *   A confirmation message is returned, including the estimated delivery date.
-    *   Error messages are returned if the order cannot be fulfilled (e.g., shape not available, missing ingredients).
+### The Orchestrator
 
-3.  **Conflict Resolution and Synchronization:**
-    *   **Synchronization:** The `asyncio.Lock` within the `PastaFactoryManager` synchronizes access to the shared resources of the agents, preventing potential race conditions. This ensures that the order processing and inventory checks occur in a controlled manner.
-    *   **Conflict Resolution:**  The example does not explicitly demonstrate conflict resolution, but the design allows for it. For instance, if the InventoryManagerAgent's inventory data were to be updated by multiple concurrent requests, the `asyncio.Lock` would help prevent data corruption.  The `handle_order` method manages the workflow and can determine if the order can be fulfilled based on the shared data available from the agents.
+`Orchestrator` is itself a `ToolCallingAgent`. It creates the four specialized agents and gives itself four **coordination tools**, each of which passes a request to one agent with `.run()`:
 
-4.  **Tools:**
-    *   The `GetCurrentDateTool` and `EstimateLeadTimeTool` provide additional functionality, such as estimating the delivery date, allowing the system to be more sophisticated.
+| Coordination tool | Sends the request to |
+|---|---|
+| `process_order_info` | `OrderProcessorAgent`: identify the pasta shape and quantity, generate an order ID |
+| `design_custom_pasta` | `CustomPastaDesignerAgent`: design and save a custom recipe |
+| `manage_inventory` | `InventoryManagerAgent`: check that the ingredients are available |
+| `schedule_production` | `ProductionManagerAgent`: queue the order with its priority and give a delivery date |
+
+`process_order(customer_request)` prepares each order before handing it to the orchestrator:
+
+1. it flags a custom request (words such as "custom", "special" or "design");
+2. it sets the priority from the customer's words: "rush", "urgent", "priority" or "asap" give 2, "emergency" gives 3;
+3. it passes the request, both flags and the workflow (understand the order, design the custom pasta first if one is requested, check the inventory, then schedule production) to `self.run()`, and the orchestrator decides which coordination tools to call. If an order can't be fulfilled, the orchestrator explains why to the customer.
+
+## How the Shared State Stays Consistent
+
+This solution doesn't use a lock. Two design choices keep the state consistent:
+
+* only tools modify `factory_state`;
+* `add_to_production_queue` checks the inventory and subtracts from it **in the same tool call**. So an order is either fully reserved or rejected with the inventory unchanged, even if an agent misjudged the inventory earlier in the conversation.
+
+`run_demo()` processes the orders one after another, so two `add_to_production_queue` calls never overlap here. If they could run at the same moment (newer smolagents versions can run several tool calls from one step in parallel threads, for example), both could pass the inventory check before either one subtracted its ingredients. To rule that out, you would hold a `threading.Lock` around the check and the subtraction in `add_to_production_queue`. (`asyncio.Lock` only coordinates `async` code running on one event loop, so it wouldn't protect tools running in threads.)
 
 ## Running the Code
 
-1.  **Install Dependencies:**
-    ```bash
-    pip install smolagents
-    pip install openai
-    ```
+From the `solution` folder, run:
 
-2.  **Set OpenAI API Key:**
-    *   Set the `OPENAI_API_KEY` environment variable to your OpenAI API key within the `main()` function.
-
-3.  **Run the Script:**
-    ```bash
-    python your_script_name.py
-    ```
+```bash
+python solution.py
 ```
+
+Like the starter and the demo, the script reads your API key from `UDACITY_OPENAI_API_KEY` and uses `gpt-4o-mini`. `run_demo()` processes three orders (a standard spaghetti order, a custom pasta request and a rush fettuccine order) and prints the factory state before and after.
