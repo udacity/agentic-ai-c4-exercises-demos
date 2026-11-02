@@ -27,6 +27,10 @@ model = OpenAIServerModel(
 )
 
 # Import core components from the demo file
+# Running `python <file>.py` puts only this file's folder on the import path, so add
+# the lesson folder, which holds demo/demo.py
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from demo.demo import (
     PrivacyLevel, AccessControl, Claim, PatientRecord, ComplaintRecord, 
     Database, VectorKnowledgeBase, VectorClaimSearch,
