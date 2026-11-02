@@ -964,6 +964,11 @@ class ComplaintResolutionOrchestrator(ToolCallingAgent):
         self.medical_reviewer = MedicalReviewAgent(model)
         self.claim_processor = ClaimProcessingAgent(model)
 
+        # agent.run() returns only the agent's final answer, not what its tools returned,
+        # so the tools below keep their latest result here for run_demo() to read
+        self.last_complaint = None
+        self.last_resolution = None
+
         @tool
         def handle_customer_complaint(patient_id: int, complaint_text: str, claim_id: str = None) -> Dict:
             """
@@ -1000,13 +1005,15 @@ class ComplaintResolutionOrchestrator(ToolCallingAgent):
             
             # If we still don't have a claim_id, we can't proceed
             if not claim_id:
-                return {
+                self.last_resolution = {
                     'success': False,
                     'error': 'Could not identify which claim the complaint is about',
                     'recommendation': 'Please provide a specific claim ID'
                 }
+                return self.last_resolution
             
             # Step 2: Submit the complaint
+            complaint_ids_before = set(database.complaints)
             complaint_result = self.customer_service.run(
                 f"""
                 Submit a complaint for patient {patient_id} about claim {claim_id}.
@@ -1016,14 +1023,12 @@ class ComplaintResolutionOrchestrator(ToolCallingAgent):
                 """
             )
             
-            # Extract complaint_id from the result
-            complaint_id = None
-            if hasattr(complaint_result, 'tool_calls') and complaint_result.tool_calls:
-                for call in complaint_result.tool_calls:
-                    if call.name == 'submit_complaint' and 'complaint_id' in call.arguments:
-                        complaint_id = call.arguments['complaint_id']
+            # submit_complaint adds the complaint to the database, so its ID is the
+            # newest one that was not in the database before this step
+            new_complaint_ids = [cid for cid in database.complaints if cid not in complaint_ids_before]
+            complaint_id = new_complaint_ids[-1] if new_complaint_ids else None
             
-            # If no complaint_id in tool_calls, try to extract from the text
+            # If the database shows no new complaint, try to extract the ID from the text
             if not complaint_id:
                 text_content = str(complaint_result)
                 if 'CMPL-' in text_content:
@@ -1035,11 +1040,12 @@ class ComplaintResolutionOrchestrator(ToolCallingAgent):
             
             # Still no complaint_id, we really can't proceed
             if not complaint_id:
-                return {
+                self.last_resolution = {
                     'success': False,
                     'error': 'Failed to register complaint',
                     'message': str(complaint_result)
                 }
+                return self.last_resolution
             
             # Step 3: Get medical review
             medical_review = self.medical_reviewer.run(
@@ -1102,12 +1108,13 @@ class ComplaintResolutionOrchestrator(ToolCallingAgent):
             if not resolution:
                 resolution = 'We have reviewed your complaint and our decision is to uphold the original claim determination based on your policy coverage.'
             
-            return {
+            self.last_resolution = {
                 'success': True,
                 'complaint_id': complaint_id,
                 'claim_id': claim_id,
                 'resolution': resolution
             }
+            return self.last_resolution
 
         @tool
         def generate_random_complaint() -> Dict:
@@ -1133,12 +1140,13 @@ class ComplaintResolutionOrchestrator(ToolCallingAgent):
             
             complaint_text = random.choice(complaint_reasons)
             
-            return {
+            self.last_complaint = {
                 'success': True,
                 'patient_id': claim.patient_id,
                 'claim_id': claim.id,
                 'complaint_text': complaint_text
             }
+            return self.last_complaint
 
         super().__init__(
             tools=[handle_customer_complaint, generate_random_complaint],
@@ -1168,16 +1176,13 @@ def run_demo():
         'Generate a random complaint for us to handle in this demo.'
     )
     
-    # Extract complaint data from the result
-    complaint_data = None
-    if hasattr(complaint_result, 'tool_calls') and complaint_result.tool_calls:
-        for call in complaint_result.tool_calls:
-            if call.name == 'generate_random_complaint':
-                complaint_data = call.arguments
+    # orchestrator.run() returns only the final answer text, so read the complaint
+    # that the generate_random_complaint tool stored on the orchestrator
+    complaint_data = orchestrator.last_complaint
     
     if not complaint_data or not complaint_data.get('success', False):
         print('Failed to generate a valid complaint. Demo cannot continue.')
-        return
+        return False
     
     print(f"Generated complaint: {complaint_data['complaint_text']}")
     print(f"For patient ID: {complaint_data['patient_id']}")
@@ -1196,13 +1201,8 @@ def run_demo():
         """
     )
     
-    # Extract resolution info from tool calls
-    resolution_info = None
-    if hasattr(resolution_result, 'tool_calls') and resolution_result.tool_calls:
-        for call in resolution_result.tool_calls:
-            if call.name == 'handle_customer_complaint':
-                resolution_info = call.arguments
-                break
+    # Read the result that the handle_customer_complaint tool stored on the orchestrator
+    resolution_info = orchestrator.last_resolution
     
     # Check if we got a successful resolution
     if resolution_info and resolution_info.get('success', False):
