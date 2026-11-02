@@ -27,6 +27,10 @@ model = OpenAIServerModel(
 )
 
 # Import core components from the demo file
+# Running `python <file>.py` puts only this file's folder on the import path, so add
+# the lesson folder, which holds demo/demo.py
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from demo.demo import (
     PrivacyLevel, AccessControl, Claim, PatientRecord, ComplaintRecord, 
     Database, VectorKnowledgeBase, VectorClaimSearch,
@@ -253,6 +257,10 @@ class FraudPatternDetector:
 fraud_detector = FraudPatternDetector()
 fraud_detector.update_patterns(fraud_patterns)
 
+# The latest fraud analysis for each claim ID. agent.run() returns only the agent's
+# final answer, so the orchestrator reads the fraud check's result from here.
+fraud_assessments = {}
+
 # STEP 3: Implement a tool for fraud detection
 @tool
 def check_claim_for_fraud(claim_id: str, access_level: str = PrivacyLevel.AGENT) -> Dict:
@@ -283,6 +291,7 @@ def check_claim_for_fraud(claim_id: str, access_level: str = PrivacyLevel.AGENT)
     
     # Run fraud detection
     fraud_analysis = fraud_detector.detect_fraud_indicators(claim, patient_claims, access_level)
+    fraud_assessments[claim_id] = fraud_analysis
     
     return {
         'success': True,
@@ -347,6 +356,7 @@ class EnhancedOrchestrator(ComplaintResolutionOrchestrator):
                 Dictionary containing the claim processing result with fraud assessment
             """
             # Step 1: Process the new claim
+            claim_ids_before = set(database.claims)
             process_result = self.claim_processor.run(
                 f"""
                 Process this new claim:
@@ -359,12 +369,10 @@ class EnhancedOrchestrator(ComplaintResolutionOrchestrator):
                 """
             )
             
-            # Extract claim_id from the result
-            claim_id = None
-            if hasattr(process_result, 'tool_calls') and process_result.tool_calls:
-                for call in process_result.tool_calls:
-                    if call.name == 'process_new_claim' and 'claim_id' in call.arguments:
-                        claim_id = call.arguments['claim_id']
+            # process_new_claim adds the claim to the database, so the new claim ID
+            # is the newest one that was not in the database before this run
+            new_claim_ids = [cid for cid in database.claims if cid not in claim_ids_before]
+            claim_id = new_claim_ids[-1] if new_claim_ids else None
             
             if not claim_id:
                 return {
@@ -383,12 +391,8 @@ class EnhancedOrchestrator(ComplaintResolutionOrchestrator):
                 """
             )
             
-            # Extract fraud analysis
-            fraud_analysis = {'fraud_risk': 'unknown'}
-            if hasattr(fraud_result, 'tool_calls') and fraud_result.tool_calls:
-                for call in fraud_result.tool_calls:
-                    if call.name == 'check_claim_for_fraud' and 'fraud_analysis' in call.arguments:
-                        fraud_analysis = call.arguments['fraud_analysis']
+            # Read the analysis that check_claim_for_fraud stored for this claim
+            fraud_analysis = fraud_assessments.get(claim_id, {'fraud_risk': 'unknown'})
             
             # Get the claim details
             claim = database.get_claim(claim_id, PrivacyLevel.ADMIN)
@@ -402,8 +406,8 @@ class EnhancedOrchestrator(ComplaintResolutionOrchestrator):
                 'recommendation': _get_fraud_recommendation(fraud_analysis.get('fraud_risk', 'unknown'))
             }
             
-        # Add the new tool to the orchestrator
-        self.tools.append(handle_claim_with_fraud_check)
+        # Add the new tool to the orchestrator (smolagents keeps tools in a dict keyed by name)
+        self.tools[handle_claim_with_fraud_check.name] = handle_claim_with_fraud_check
 
 # STEP 6: Function to demonstrate the fraud detection capabilities
 def demonstrate_fraud_detection():

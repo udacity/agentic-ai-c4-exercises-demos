@@ -399,10 +399,8 @@ def run_simulation():
         
         print("\n--- 🍝 End of Demo ---")
         print("In the exercise, you'll extend this system to handle:")
-        print("1. Concurrent orders that compete for the same resources")
-        print("2. Custom pasta shape requests")
-        print("3. Priority ordering and queue management")
-        print("4. Real-time inventory reordering")
+        print("1. Custom pasta shape requests")
+        print("2. Priority ordering and queue management")
     except Exception as e:
         print(f"Error in simulation: {str(e)}")
         print(traceback.format_exc())
