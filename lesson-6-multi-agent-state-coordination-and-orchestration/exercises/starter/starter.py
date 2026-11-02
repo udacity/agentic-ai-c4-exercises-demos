@@ -96,7 +96,12 @@ factory_state = FactoryState()
 def check_pasta_recipe(pasta_shape: str) -> Dict[str, float]:
     """
     Check what ingredients are needed for a specific pasta shape.
-    Returns a dictionary of ingredients and amounts needed per kg of pasta.
+    
+    Args:
+        pasta_shape: The name of the pasta shape to check the recipe for.
+        
+    Returns:
+        A dictionary of ingredients and amounts needed per kg of pasta.
     """
     if pasta_shape in factory_state.pasta_recipes:
         return factory_state.pasta_recipes[pasta_shape]
@@ -154,6 +159,12 @@ def check_production_capacity(days_ahead: int = 7) -> Dict[str, Any]:
     """
     Check the current production capacity and queue for the next X days.
     Returns information about queue size and estimated completion times.
+    
+    Args:
+        days_ahead: Number of days ahead to check capacity for
+        
+    Returns:
+        Dictionary with production capacity metrics
     """
     queue_size = len(factory_state.production_queue)
     
